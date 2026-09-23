@@ -1,0 +1,22 @@
+# node_modules y dependencias instaladas
+node_modules/
+
+# Configuración local con credenciales reales (¡NO subir!)
+.env
+
+# Compilación TypeScript
+dist/
+*.tsbuildinfo
+
+# Logs
+*.log
+out.txt
+err.txt
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
