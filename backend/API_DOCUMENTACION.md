@@ -1,4 +1,4 @@
-# 📋 API AgrónomoDigital — Documentación para el Frontend
+# API AgrónomoDigital — Documentación para el Frontend
 
 > Proyecto: AgrónomoDigital — Backend con Node.js + Express.js + TypeScript + MySQL
 > Autor: Integrante 3 (Backend y Base de Datos) — Grupo CyberBichos
@@ -11,7 +11,7 @@
 - **Base URL:** `http://localhost:3002`
 - **Formato de datos:** JSON (todas las respuestas)
 - **Autenticación:** Token JWT (expira en 2 horas)
-- **Regla general:** las rutas con 🔒 requieren el token en el encabezado:
+- **Regla general:** las rutas con candado requieren el token en el encabezado:
 
 ```
 Authorization: Bearer <token>
@@ -25,15 +25,15 @@ El token se obtiene al hacer login y debe guardarse en el frontend (ej. localSto
 
 | Método | Ruta | Protegida | Qué hace |
 |--------|------|-----------|----------|
-| GET | `/` | ❌ | Verificar que la API está viva |
-| POST | `/registro` | ❌ | Crear cuenta de usuario |
-| POST | `/login` | ❌ | Iniciar sesión y obtener token |
-| GET | `/parcelas` | 🔒 | Listar parcelas del usuario |
-| POST | `/parcelas` | 🔒 | Crear una parcela |
-| PUT | `/parcelas/:id` | 🔒 | Editar una parcela |
-| DELETE | `/parcelas/:id` | 🔒 | Eliminar una parcela |
-| POST | `/costos` | 🔒 | Registrar un costo |
-| GET | `/parcelas/:id/costos` | 🔒 | Ver los costos de una parcela |
+| GET | `/` | No | Verificar que la API está viva |
+| POST | `/registro` | No | Crear cuenta de usuario |
+| POST | `/login` | No | Iniciar sesión y obtener token |
+| GET | `/parcelas` | Sí | Listar parcelas del usuario |
+| POST | `/parcelas` | Sí | Crear una parcela |
+| PUT | `/parcelas/:id` | Sí | Editar una parcela |
+| DELETE | `/parcelas/:id` | Sí | Eliminar una parcela |
+| POST | `/costos` | Sí | Registrar un costo |
+| GET | `/parcelas/:id/costos` | Sí | Ver los costos de una parcela |
 
 ---
 
@@ -103,7 +103,7 @@ Inicia sesión y devuelve el **token JWT** que se usa para las rutas protegidas.
 }
 ```
 
-> **Importante para el frontend:** el token debe guardarse y enviarse en el encabezado `Authorization` de todas las rutas con 🔒.
+> **Importante para el frontend:** el token debe guardarse y enviarse en el encabezado `Authorization` de todas las rutas con candado.
 
 ---
 

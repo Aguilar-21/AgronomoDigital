@@ -1,4 +1,4 @@
-# AgronomoDigital 🌾
+# AgronomoDigital
 
 Sistema para pequeños y medianos productores agrícolas del estado Sucre. Permite registrar parcelas, llevar los costos de producción (preparación de suelo, insumos, mano de obra, cosecha) y calcular el punto de equilibrio sobre el precio de venta del quintal.
 
