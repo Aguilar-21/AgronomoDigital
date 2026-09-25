@@ -6,8 +6,10 @@ import jwt from 'jsonwebtoken';
 import type { RowDataPacket } from 'mysql2';
 import type { ResultSetHeader } from 'mysql2';
 import type { Request,Response, NextFunction } from 'express';
+import cors from 'cors';
 
 const app = express();
+app.use(cors()); // permite que el frontend de otro origen (puerto) consuma la API
 app.use(express.json()); // middleware que convierte el JSON entrante en req.body
 const SECRETO = process.env.JWT_SECRETO ?? 'clave_secreta_error_sin_env'; // la clave viene del .env
 const PUERTO = Number(process.env.PUERTO) || 3002;
@@ -182,7 +184,7 @@ app.post('/costos', protegerRuta, async (req, res) => {
     }
 });
 
-app.get('/parcelas/:id/costos', protegerRuta, async (req,res) => {
+app.get('/parcelas/:id/costos', protegerRuta, async (req, res) => {
     try {
         // JOIN costos junto con su parcela, pero solo si la parcela es del usuario
         const [filas] = await pool.query<RowDataPacket[]>(
@@ -197,6 +199,51 @@ app.get('/parcelas/:id/costos', protegerRuta, async (req,res) => {
     }
 });
 
-app.listen(PUERTO, () => {
+app.get('/parcelas/:id/costo-total', protegerRuta, async (req, res) => {
+    try {
+        // JOIN costo con su parcela  
+        const [filas] = await pool.query<RowDataPacket[]>(
+            'SELECT SUM(t.monto) AS costo_total FROM transacciones_costos t ' + 
+            'JOIN parcelas p ON t.id_parcela  = p.id_parcela ' + 
+            'WHERE p.id_parcela = ? AND p.id_usuario = ?',
+            [req.params.id, res.locals.usuario.id]
+        );
+        // Si no hay costos, devuelve 0 en ves de null
+        res.json({ costo_total: filas[0]?.costo_total ?? 0 });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al cacular el costo total' });
+    }
+});
+
+
+// Consultar precios 
+app.get('/precios', protegerRuta, async (req, res) => {
+    try {
+        const [filas] = await pool.query<RowDataPacket[]>(
+            'SELECT * FROM historial_precios'
+        );
+        res.json(filas);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al consultar precios' });
+    }
+});
+
+app.post('/precios', protegerRuta, async (req, res) => {
+    try {
+        const { fecha, precio_venta_quintal } = req.body;
+
+        // INSERT con sentencias preparadas
+        await pool.query(
+            'INSERT INTO historial_precios (fecha, precio_venta_quintal) VALUES (?, ?)',
+            [fecha, precio_venta_quintal]
+        );
+        
+        res.status(201).json({mensaje: 'Precio Registrado' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al registrar el precio' });
+    }
+});
+
+app.listen(PUERTO, '0.0.0.0', () => {
     console.log(`Corriendo en el puerto ${PUERTO}`);
 });
