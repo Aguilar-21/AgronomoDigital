@@ -60,7 +60,31 @@ import cors from 'cors';
 const app = express();
 app.use(cors()); // permite que el frontend de otro origen (puerto) consuma la API
 app.use(express.json()); // middleware que convierte el JSON entrante en req.body
-const SECRETO = process.env.JWT_SECRETO ?? 'clave_secreta_error_sin_env'; // la clave viene del .env
+
+// La clave con la que se firman los tokens viene SIEMPRE del .env.
+// Antes, si faltaba, se usaba una clave de relleno que estaba escrita en este
+// mismo archivo: la app arrancaba igual y cualquiera que leyera el codigo
+// podia firmar tokens falsos. Ahora la app se niega a arrancar, porque es
+// mejor no funcionar que funcionar con la puerta abierta.
+const SECRETO = process.env.JWT_SECRETO;
+if (!SECRETO || SECRETO.length < 16) {
+  console.error('\n' + '='.repeat(64));
+  console.error('  Falta JWT_SECRETO en el archivo .env (o es demasiado corto).');
+  console.error('  Sin esa clave la API no puede firmar tokens de forma segura,');
+  console.error('  asi que no arranca.');
+  console.error('');
+  console.error('  Como arreglarlo:');
+  console.error('    1. Copia backend/.env.example a backend/.env');
+  console.error('    2. Ponle una clave larga y unica, por ejemplo:');
+  console.error('         JWT_SECRETO=' + 'x'.repeat(40));
+  console.error('    3. Ese .env NUNCA se sube al repositorio, ya esta en .gitignore');
+  console.error('');
+  console.error('  La clave NO va en el codigo ni en el repositorio. Cada');
+  console.error('  instalacion genera la suya.');
+  console.error('='.repeat(64) + '\n');
+  process.exit(1);
+}
+
 const PUERTO = Number(process.env.PUERTO) || 3002;
 
 
