@@ -119,14 +119,14 @@ router.get('/publicaciones', protegerRuta, validar(queryPublicaciones, 'query'),
         'SELECT pub.id_publicacion, pub.id_parcela, pub.id_producto, pub.cantidad, ' +
             'pub.precio_unitario, pub.fecha, pub.estado, pub.notas, pub.id_canal, ' +
             'pr.nombre AS producto, pr.unidad, ' +
-            'par.nombre_parcela, ' +
+            'p.nombre_parcela, ' +
             'u.nombre AS productor, u.correo AS productor_correo, ' +
             'ca.nombre AS canal ' +
             'FROM publicaciones pub ' +
             'JOIN parcelas p ON p.id_parcela = pub.id_parcela ' +
             'JOIN usuarios u ON u.id_usuario = p.id_usuario ' +
             'JOIN productos pr ON pr.id_producto = pub.id_producto ' +
-            'LEFT JOIN canales ca ON ca.id_canal = pub.id_canal ' +
+            'LEFT JOIN canales_venta ca ON ca.id_canal = pub.id_canal ' +
             'WHERE ' + where +
             ' ORDER BY pub.fecha DESC, pub.id_publicacion DESC' +
             ' LIMIT ? OFFSET ?',

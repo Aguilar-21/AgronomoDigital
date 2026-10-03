@@ -99,16 +99,26 @@ export async function correrMigraciones(
         // Cada sentencia por separado. El archivo entero como una sola llamada
         // solo funciona si el driver acepta varios sentencias, y cuando una
         // falla MySQL ya aplico las anteriores: no hay vuelta atras.
-        const sentencias = sql
+        //
+        // EL ORDEN IMPORTA: primero se quitan los comentarios de linea y despues
+        // se parte por ';'. Al revés el archivo 001 se rompia.
+        //
+        // Un comentario como
+        //
+        //     -- Los DECIMAL no se tocan; siguen saliendo como texto
+        //
+        // tiene un ';' dentro. Si se parte primero, la primera mitad se descarta
+        // como comentario pero la segunda sobrevive y queda pegada al ALTER de
+        // abajo, asi que MySQL recibe una sentencia que empieza con texto de
+        // comentario y falla con un error de sintaxis que no senala la causa.
+        const sqlSinComentarios = sql
+            .split('\n')
+            .filter((linea) => !linea.trim().startsWith('--'))
+            .join('\n');
+
+        const sentencias = sqlSinComentarios
             .split(';')
-            .map((s) =>
-                // Se quitan los comentarios de linea, que si no se cuelan en la
-                // sentencia y MySQL los rechaza.
-                s.split('\n')
-                    .filter((linea) => !linea.trim().startsWith('--'))
-                    .join('\n')
-                    .trim()
-            )
+            .map((s) => s.trim())
             .filter((s) => s.length > 0);
 
         try {
