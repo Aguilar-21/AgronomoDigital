@@ -1,8 +1,8 @@
 {
   "name": "agronodigital",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "API de costos agriculturales por parcela",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
@@ -11,7 +11,6 @@
     "test": "node pruebas/e2e.js",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integracion.config.ts",
     "test:instalacion": "node pruebas/instalacion.js",
     "typecheck": "tsc --noEmit"
   },
@@ -37,8 +36,6 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.6.1",
-    "@types/supertest": "^7.2.1",
-    "supertest": "^7.3.0",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
