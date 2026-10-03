@@ -90,8 +90,8 @@ npm run test:instalacion  # arma una base temporal desde schema.sql y la valida
 npm run typecheck     # TypeScript sin emitir archivos
 ```
 
-`npm run test:unit` es el que conviene correr mientras se programa: son 27 pruebas de la
-aritmetica de cálculos, corren en milisegundos y no tocan MySQL.
+`npm run test:unit` es el que conviene correr mientras se programa: son 42 pruebas de la
+aritmetica de calculos y de las reglas de publicaciones, corren en milisegundos y no tocan MySQL.
 
 ---
 
@@ -823,16 +823,17 @@ AgronomoDigital/
 │   │   ├── 002_ciclos.sql          ← ciclo en costos y publicaciones
 │   │   └── 003_indices.sql         ← notas + indices de consulta
 │   ├── pruebas/
-│   │   ├── unitarias/              ← 27 pruebas de calculos, sin base de datos
+│   │   ├── unitarias/              ← 42 pruebas, sin base de datos ni puertos
 │   │   ├── e2e.js                  ← 107 comprobaciones contra la API local
 │   │   └── instalacion.js          ← arma una base desde schema.sql y revisa cascadas
 │   ├── schema.sql                  ← las 9 tablas, con sus llaves foraneas
 │   ├── catalogos.sql               ← los 14 productos, 25 categorias y 4 canales
 │   ├── API_DOCUMENTACION.md        ← referencia de cada endpoint
 │   └── .env.example
-└── frontend_agronodigital/         ← equipo de interfaz
-    └── index.html                  ← toda la UI en un solo archivo
 ```
+
+Este repositorio es **solo el backend**. La interfaz vive en otro proyecto aparte y no se versiona
+aquí.
 
 ### Por qué `app.ts` está separado de `server.ts`
 
@@ -879,7 +880,7 @@ mano.
 ```bash
 cd backend
 
-npm run test:unit           # 27 pruebas de calculos. No tocan MySQL. ~8 ms
+npm run test:unit           # 42 pruebas. No tocan MySQL ni abren puertos. ~1 s
 npm test                    # e2e.js: registro, calculos, mercado, permisos, cascadas
 npm run test:instalacion   # crea una base temporal desde schema.sql y la valida
 npm run typecheck           # TypeScript sin emitir archivos
