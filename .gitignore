@@ -17,6 +17,5 @@ err.txt
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
+# Datos descargados (documentos fuente, no se versionan)
+backend/datos/
