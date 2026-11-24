@@ -1,31 +1,4 @@
-// middleware/validar.ts
-//
-// Un solo lugar donde se decide que es una peticion valida.
-//
-// QUE PROBLEMA RESUELVE
-//
-// Cada ruta validaba a mano, y cada una validaba distinto:
-//
-//   - POST /costos revisaba monto, pero no que tipo_costo fuera texto
-//   - POST /publicaciones comparaba cantidad <= 0 sin convertir: si el cliente
-//     mandaba "abc", "abc" <= 0 es false, y "abc" llegaba a MySQL
-//   - PUT /parcelas con campos undefined escribia NULL sobre lo que habia
-//   - POST /login sin body hacia undefined.length y reventaba con 500
-//   - POST /precios con fecha "no-es-fecha" la mandaba a MySQL tal cual
-//
-// Esos casos no son hipoteticos: producian 500, y un 500 culpa al servidor
-// cuando el error vino del cliente.
-//
-// QUE HACE ESTE ARCHIVO
-//
-//   validar(schema) devuelve un middleware de Express. Si la peticion no
-//   cumple, responde 400 con la lista exacta de campos que fallaron y la ruta
-//   no se ejecuta.
-//
-// El valor que llega a la ruta ya viene parseado: los string numericos ("150")
-// son numeros, y lo que no se declara en el esquema se descarta. Eso elimina de
-// raiz los NaN que venian de Number() sobre campos que a veces eran string y a
-// veces numero.
+// Valido body, params y query con los esquemas de Zod.
 
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { ZodTypeAny } from 'zod';
@@ -35,17 +8,8 @@ import { logger } from '../logger';
 export type Fuente = 'body' | 'query' | 'params';
 
 /**
- * Middleware que valida una parte de la peticion.
- *
- * Donde deja el resultado:
- *
- *   body   -> req.body, ya parseado
- *   params -> req.params, ya parseado
- *   query  -> res.locals.query
- *
- * El query va a res.locals y no a req.query a proposito: en Express 5
- * req.query es un getter sin setter, y asignarle un valor falla en silencio o
- * lanza segun el modo. Sobrescribirlo rompia la ruta sin avisar.
+ * Valida body o params en req y query en res.locals (en Express 5 req.query
+ * no se puede sobrescribir).
  */
 export function validar(
     esquema: ZodTypeAny,

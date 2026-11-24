@@ -1,40 +1,4 @@
-// migraciones/correr.ts
-//
-// Corre las migraciones pendientes y no repite las que ya se aplicaron.
-//
-// QUE CAMBIA
-//
-// Antes el "migrar" era: abrir MySQL, copiar schema.sql a mano, y si algo
-// fallaba a mitad, la base quedaba con una parte del esquema viejo y una parte
-// del nuevo. Luego la aplicacion fallaba con errores que no tenian nada que ver
-// con el cambio que se estaba haciendo.
-//
-// LA TABLA migraciones_aplicadas
-//
-// El problema de correr un archivo de SQL cada vez es no saber cual ya se
-// aplico. MySQL no lleva esa cuenta. Entonces este script guarda el nombre de
-// cada archivo aplicado en una tabla, y al correr de nuevo solo ejecuta los que
-// no estan.
-//
-// Esa tabla se crea sola si no existe, con el nombre del archivo y la fecha.
-//
-// POR QUE SOLO SE APLICA UNA VEZ Y NO SE DESHACE
-//
-// No hay rollback. Es una decision consciente: un rollback Automatico es peor
-// que no tener rollback cuando hay renombres de columnas, porque "deshacer" el
-// rename significa volver a renombrar, y si alguien escribio datos en la columna
-// nueva entre la aplicacion y el rollback, esos datos quedan en la columna
-// equivocada sin aviso.
-//
-// Para volver atras hay que escribir el SQL a mano, sabiendo lo que se hizo. Es
-// mas lento, y por eso el comentario de cada migracion dice que se puede y que
-// no.
-//
-// LA TRANSACCION
-//
-// MySQL no hace rollback de DDL. Un ALTER TABLE a medias NO se puede revertir
-// con ROLLBACK. Por eso se ejecuta una sentencia por una y se reporta cual
-// fallo, en vez de un lote silencioso.
+// Aplico los .sql que falten, en orden.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,17 +6,7 @@ import type { RowDataPacket } from 'mysql2';
 import pool from '../db';
 import { logger } from '../logger';
 
-// Los .sql viven en migraciones/, que esta FUERA de src/ y por lo tanto fuera de
-// rootDir y fuera de dist/ al compilar.
-//
-// Se resuelve con dos saltos hacia arriba en vez de copiar los .sql dentro de
-// src: los archivos de migracion son datos, no codigo, y tenerlos duplicados
-// dentro de src significaria que una copia puede quedar desactualizada sin que
-// nadie se entere.
-//
-// En desarrollo __dirname es <backend>/src/migraciones, y dos saltos dan
-// <backend>, que es donde esta migraciones/.
-// En produccion es <backend>/dist/migraciones, y tambien dan <backend>.
+// Los .sql viven en migraciones/, que esta FUERA de src/ y por lo tanto fuera...
 const directorioMigraciones = join(__dirname, '..', '..', 'migraciones');
 
 /** Ordena los nombres de los archivos de forma natural: 2 antes que 10. */
@@ -67,7 +21,6 @@ export async function correrMigraciones(
     directorio = directorioMigraciones
 ): Promise<string[]> {
     // Tabla de control. Se crea antes de nada para que el propio registro de lo
-    // aplicado tenga garantia de que se guardo.
     await pool.query(
         'CREATE TABLE IF NOT EXISTS migraciones_aplicadas (' +
             'nombre varchar(255) NOT NULL, ' +
@@ -97,20 +50,6 @@ export async function correrMigraciones(
         const sql = readFileSync(join(directorio, archivo), 'utf8');
 
         // Cada sentencia por separado. El archivo entero como una sola llamada
-        // solo funciona si el driver acepta varios sentencias, y cuando una
-        // falla MySQL ya aplico las anteriores: no hay vuelta atras.
-        //
-        // EL ORDEN IMPORTA: primero se quitan los comentarios de linea y despues
-        // se parte por ';'. Al revés el archivo 001 se rompia.
-        //
-        // Un comentario como
-        //
-        //     -- Los DECIMAL no se tocan; siguen saliendo como texto
-        //
-        // tiene un ';' dentro. Si se parte primero, la primera mitad se descarta
-        // como comentario pero la segunda sobrevive y queda pegada al ALTER de
-        // abajo, asi que MySQL recibe una sentencia que empieza con texto de
-        // comentario y falla con un error de sintaxis que no senala la causa.
         const sqlSinComentarios = sql
             .split('\n')
             .filter((linea) => !linea.trim().startsWith('--'))
@@ -144,8 +83,6 @@ export async function correrMigraciones(
 }
 
 // Solo se ejecuta cuando este archivo es el punto de entrada, no cuando otra
-// cosa lo importa. Sin esta comprobacion, importar el modulo desde una prueba
-// migraria la base de produccion.
 if (process.argv[1] && process.argv[1].endsWith('correr.ts')) {
     correrMigraciones()
         .then((aplicadas) => {

@@ -1,37 +1,4 @@
-// middleware/errores.ts
-//
-// Manejador de errores central.
-//
-// QUE PROBLEMA RESUELVE
-//
-// Cada una de las 26 rutas tenia su propio try/catch con la misma forma:
-//
-//     } catch (error) {
-//         console.error(error);
-//         res.status(500).json({ error: 'Error al registrar el costo' });
-//     }
-//
-// Eso son 27 copias del mismo bloque, con tres problemas:
-//
-//   1. El mensaje al usuario era siempre el mismo para cualquier fallo. Si la
-//      base estaba caida y el usuario mandaba un costo malo, los dos casos
-//      respondian "Error al registrar el costo". No se podia distinguir.
-//   2. Se filtraba el detalle real. Un error de MySQL por columna demasiado
-//      larga llegaba al usuario como un 500 generico, y el detalle bueno solo
-//      se veia en el log del servidor.
-//   3. Era facil olvidar el catch en una ruta nueva. Si se olvidaba, Express 5
-//      deja que la excepcion llegue sola a este middleware, y sin el middleware
-//      la respuesta que ve el usuario es un HTML de error con el stack dentro.
-//
-// QUE HACE ESTE ARCHIVO
-//
-//   - ErrorHttp: un error que ya sabe que codigo y que mensaje lleva.
-//   - erroresConocidos: convierte errores de MySQL y de zod en ErrorHttp.
-//   - manejadorErrores: el unico sitio que responde con un 4xx o 500.
-//
-// En Express 5 las funciones async que fallan ya propagan el error al siguiente
-// middleware solas, asi que las rutas pueden quitarse el try/catch sin perder el
-// manejo de errores. Eso es lo que hace el resto de la app.
+// Aca se responden todos los errores. Las rutas solo lanzan ErrorHttp.
 
 import type {
     ErrorRequestHandler,
@@ -73,20 +40,8 @@ export const conflicto = (mensaje: string) => new ErrorHttp(409, mensaje);
 const CODIGO_DUPLICADO = 'ER_DUP_ENTRY';
 
 /**
- * Traduce errores que no son ErrorHttp a un ErrorHttp con sentido.
- *
- *   ER_DUP_ENTRY  -> 409  en vez de 500. El correo duplicado es un conflicto
- *                        esperado, no una falla del servidor. Ademas asi no hace
- *                        falta el SELECT previo para saber si el correo existe,
- *                        que era una condicion de carrera: dos registros
- *                        simultaneos pasaban los dos el SELECT y despues uno
- *                        reventaba con 500.
- *
- *   ER_NO_REFERENCED_ROW_2  -> 404  el id que mandaron no existe.
- *   ER_ROW_IS_REFERENCED_2  -> 409  no se puede borrar algo que otros usan.
- *   ZodError                 -> 400  la validacion fallo.
- *
- * Cualquier otra cosa se deja pasar como 500, que es lo que corresponde.
+ * Traduce los errores de MySQL y de Zod a ErrorHttp. Un duplicado es 409,
+ * un id que no existe es 404 y lo demás se deja como 500.
  */
 export function erroresConocidos(error: unknown): ErrorHttp {
     if (error instanceof ErrorHttp) return error;
@@ -140,8 +95,6 @@ export const manejadorErrores: ErrorRequestHandler = (
     next: NextFunction
 ) => {
     // Si los headers ya se enviaron, no hay nada que hacer: delegar al cierre
-    // de Express es lo unico correcto. Intentar un res.status(1) desata
-    // "Cannot set headers after they are sent".
     if (res.headersSent) {
         return next(error);
     }
@@ -149,7 +102,6 @@ export const manejadorErrores: ErrorRequestHandler = (
     const http = erroresConocidos(error);
 
     // Un 5xx es una falla nuestra y se loguea entero. Un 4xx es culpa del
-    // cliente que mando algo malo, asi que se loguea corto: ruta y motivo.
     if (http.codigo >= 500) {
         logger.error(
             { err: error, ruta: req.originalUrl, metodo: req.method },
@@ -169,16 +121,7 @@ export const manejadorErrores: ErrorRequestHandler = (
 };
 
 /**
- * 404 para rutas que no existen.
- *
- * Sin esto, una ruta mal escrita devuelve el HTML por defecto de Express, que
- * no es JSON. El frontend siempre espera JSON, y un HTML inesperado hace que
- * falle el .json() del lado del navegador.
- *
- * Se tipa como RequestHandler y no como ErrorRequestHandler a proposito: no es
- * middleware de error, y ErrorRequestHandler empieza con el parametro `err`.
- * Declararlo con menos parametros hace que TypeScript corra los tipos un lugar
- * y termine diciendo que `res` es un Request.
+ * 404 para rutas que no existen, con el mismo formato JSON que los otros errores.
  */
 export const rutaNoEncontrada: RequestHandler = (req, res) => {
     logger.warn({ ruta: req.originalUrl, metodo: req.method }, 'ruta inexistente');

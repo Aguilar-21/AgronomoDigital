@@ -62,7 +62,7 @@ describe('POST /publicaciones: ciclo', () => {
         expect(r.ciclo).toBe('2026-A');
     });
 
-    it('acepta el ciclo que usa POST /parcelas/:id/produccion', () => {
+    it('acepta el ciclo que usa POST /parcelas/:id/siembras', () => {
         // Los dos endpoints tienen que hablar el mismo idioma de ciclos. Si uno
         // usa 'actual' y el otro no, la comparacion de disponibilidad no
         // encuentra nada y el 409 vuelve a aparecer.

@@ -1,18 +1,4 @@
-// routes/precios.ts
-//
-// GET y POST de /precios.
-//
-// QUE CAMBIA
-//
-// 1. precio_venta_quintal paso a precio_venta. El nombre viejo mentia: hay 14
-//    productos en 6 unidades y el valor siempre fue el precio de LA UNIDAD.
-//
-// 2. Durante la transicion se aceptan los dos nombres al escribir, y el viejo
-//    sigue saliendo en la respuesta como alias. Asi el frontend viejo no se
-//    rompe y ademas la respuesta trae aviso_deprecado para que se sepa que hay
-//    que migrar.
-//
-// 3. GET /precios es paginado. El historial es la tabla que mas crece.
+// Historial de precios de venta.
 
 import { Router } from 'express';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
@@ -29,14 +15,8 @@ import { num } from '../services/calculos';
 const router = Router();
 
 /**
- * GET /precios[?id_producto=][?id_canal=][?limit=][?offset=]
- *
- * Devuelve { precios, total, limit, offset }.
- *
- * Cada fila trae precio_venta y tambien precio_venta_quintal con el mismo
- * valor. Es duplicado a proposito: si el frontend viejo lee el campo viejo, sigue
- * funcionando sin cambiar una linea. Cuando el frontend se actualice, el alias se
- * borra de aqui.
+ * GET /precios, paginado. Devuelve { precios, total, limit, offset }.
+ * Cada fila trae precio_venta y, por ahora, el alias precio_venta_quintal.
  */
 router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shape), 'query'), async (req, res) => {
     const usuario = usuarioActual(res);
@@ -96,15 +76,8 @@ router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shap
 });
 
 /**
- * POST /precios
- *
- * body: { id_producto, precio_venta, fecha, id_canal? }
- *   o:  { id_producto, precio_venta_quintal, fecha, id_canal? }   (transicion)
- *
- * 201 { mensaje, id_precio, precio_venta }
- *
- * /precios NO es publica: los precios de venta son informacion del negocio y
- * exponerla a cualquiera seria mostrarle a un competidor el margen.
+ * POST /precios. Acepta precio_venta y, mientras tanto, precio_venta_quintal
+ * con un aviso. No es pública: muestra márgenes del negocio.
  */
 router.post('/precios', protegerRuta, validar(crearPrecioSchema), async (req, res) => {
     const cuerpo = req.body as {
@@ -151,13 +124,7 @@ router.post('/precios', protegerRuta, validar(crearPrecioSchema), async (req, re
     res.status(201).json(respuesta);
 });
 
-/**
- * GET /precios/ultimo?id_producto=&id_canal=
- *
- * Ruta nueva. Devuelve solo el ultimo precio, que es lo que necesita la pantalla
- * de punto de equilibrio. Antes habia que bajar el historial completo y tomar el
- * primero, gastando un LIMIT de mas y cargando todo en memoria.
- */
+/** GET /precios/ultimo, el último precio de ese producto y canal. */
 router.get(
     '/precios/ultimo',
     protegerRuta,
@@ -203,16 +170,9 @@ router.get(
 );
 
 /**
- * DELETE /precios/:id
- *
- * OJO CON ESTA RUTA: es la unica del sistema donde un usuario puede borrar un
- * registro que creo otro, porque el historial de precios es global y no lleva
- * id_usuario. No es un descuido, es una decision: el precio es un dato de
- * referencia publico y corregir un precio mal cargado vale mas que la
- * trazabilidad de quien lo cargo.
- *
- * Si alguna vez hay que restringirlo, se agrega id_usuario a historial_precios y
- * el DELETE lleva el filtro. Ver la seccion "Lo que falta" del README.
+ * DELETE /precios/:id. Cualquier usuario puede borrar un precio porque el
+ * historial es global y no lleva id_usuario. Para restringirlo habría que
+ * agregar esa columna y filtrar acá.
  */
 router.delete(
     '/precios/:id',

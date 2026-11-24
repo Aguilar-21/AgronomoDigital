@@ -63,25 +63,6 @@ CREATE INDEX `idx_pub_estado_fecha` ON `publicaciones` (`estado`, `fecha`, `id_p
 CREATE INDEX `idx_pub_parcela_producto` ON `publicaciones` (`id_parcela`, `id_producto`, `estado`);
 
 -- ---------------------------------------------------------------------------
--- Costos: (id_parcela, ciclo) y (id_parcela, id_producto, ciclo)
--- ---------------------------------------------------------------------------
---
--- El resumen de costos agrupa por parcela y ciclo. El indice actual es solo
--- (id_parcela), que MySQL puede usar, pero tiene que descartar fila por fila las
--- de otros ciclos para quedarse con las del pedido.
---
--- Con (id_parcela, ciclo) la busqueda es directa. El orden de las columnas
--- importa: id_parcela va primero porque siempre viene en el WHERE, y la
--- cardinalidad de parcela es menor que la de ciclo, asi que es el primer filtro
--- que reduce.
-CREATE INDEX `idx_costo_parcela_ciclo` ON `transacciones_costos` (`id_parcela`, `ciclo`);
-
--- Para el filtro por producto. Sin esto, el separador de "costos del producto" y
--- "costos generales" tiene que leer todos los costos de la parcela y descartar en
--- memoria los que no son de ese producto.
-CREATE INDEX `idx_costo_parcela_producto` ON `transacciones_costos` (`id_parcela`, `id_producto`, `ciclo`);
-
--- ---------------------------------------------------------------------------
 -- Precios: el ultimo de cada producto
 -- ---------------------------------------------------------------------------
 --

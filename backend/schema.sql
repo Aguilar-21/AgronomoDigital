@@ -30,22 +30,6 @@ CREATE TABLE `canales_venta` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `categorias_costos`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `categorias_costos` (
-  `id_categoria` int NOT NULL AUTO_INCREMENT,
-  `nombre` varchar(60) NOT NULL,
-  `tipo_producto` varchar(30) NOT NULL,
-  `es_fijo_default` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id_categoria`),
-  UNIQUE KEY `nombre` (`nombre`,`tipo_producto`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
 -- Table structure for table `historial_precios`
 --
 
@@ -149,29 +133,6 @@ CREATE TABLE `publicaciones` (
   CONSTRAINT `fk_pub_parcela` FOREIGN KEY (`id_parcela`) REFERENCES `parcelas` (`id_parcela`) ON DELETE SET NULL,
   CONSTRAINT `fk_pub_producto` FOREIGN KEY (`id_producto`) REFERENCES `productos` (`id_producto`),
   CONSTRAINT `fk_pub_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuarios` (`id_usuario`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `transacciones_costos`
---
-
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `transacciones_costos` (
-  `id_transaccion` int NOT NULL AUTO_INCREMENT,
-  `id_parcela` int NOT NULL,
-  `id_producto` int DEFAULT NULL,
-  `tipo_costo` varchar(50) NOT NULL,
-  `descripcion` varchar(255) DEFAULT NULL,
-  `monto` decimal(10,2) NOT NULL,
-  `fecha` date NOT NULL,
-  `es_fijo` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id_transaccion`),
-  KEY `fk_costo_producto` (`id_producto`),
-  KEY `fk_costo_parcela` (`id_parcela`),
-  CONSTRAINT `fk_costo_parcela` FOREIGN KEY (`id_parcela`) REFERENCES `parcelas` (`id_parcela`) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT `fk_costo_producto` FOREIGN KEY (`id_producto`) REFERENCES `productos` (`id_producto`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

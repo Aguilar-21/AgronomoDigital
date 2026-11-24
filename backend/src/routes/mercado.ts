@@ -1,22 +1,4 @@
-// routes/mercado.ts
-//
-// GET /publicaciones, POST /publicaciones y PUT /publicaciones/:id/estado.
-//
-// QUE CAMBIA
-//
-// 1. No se puede publicar mas de lo que se produjo. Antes el backend aceptaba
-//    cualquier cantidad y el error se descubria en la vida real: 500 cajas
-//    publicadas de una parcela que dio 100. Ahora disponibleParaPublicar() lo
-//    rechaza con 409 antes de insertar.
-//
-// 2. Las transiciones de estado se validan contra TRANSICIONES. vendido y
-//    retirado son terminales.
-//
-// 3. GET /publicaciones trae paginacion y total, para que el tablero no cargue
-//    la tabla entera en memoria.
-//
-// 4. GET /publicaciones/:id/estado es ruta nueva: el frontend necesita saber
-//    si todavia puede pasar a vendido o si ya no puede.
+// Publicaciones: crear, listar y cambiar el estado.
 
 import { Router } from 'express';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
@@ -97,40 +79,37 @@ router.get('/publicaciones', protegerRuta, validar(queryPublicaciones, 'query'),
         params.push(q.id_producto);
     }
     if (q.mias) {
-        cond.push('p.id_usuario = ?');
+        cond.push('pub.id_usuario = ?');
         params.push(usuario.id);
     }
 
     const where = cond.join(' AND ');
 
     const [conteo] = await pool.query<RowDataPacket[]>(
-        'SELECT COUNT(*) AS total FROM publicaciones pub ' +
-            'JOIN parcelas p ON p.id_parcela = pub.id_parcela ' +
-            'WHERE ' + where,
+        'SELECT COUNT(*) AS total FROM publicaciones pub WHERE ' + where,
         params
     );
 
     const total = Number(conteo[0]?.total ?? 0);
 
     // params se vuelve a usar con los dos valores de paginacion al final. Se
-    // pasa [...params] porque si se empujara sobre el mismo arreglo, el ORDER BY
-    // de la segunda consulta leeria numeros de mas.
     const [filas] = await pool.query<RowDataPacket[]>(
         'SELECT pub.id_publicacion, pub.id_parcela, pub.id_producto, pub.cantidad, ' +
             'pub.precio_unitario, pub.fecha, pub.estado, pub.notas, pub.id_canal, ' +
             'pr.nombre AS producto, pr.unidad, ' +
             'p.nombre_parcela, ' +
             'u.nombre AS productor, u.correo AS productor_correo, ' +
-            'ca.nombre AS canal ' +
+            'ca.nombre AS canal, ' +
+            '(pub.id_usuario = ?) AS mia ' +
             'FROM publicaciones pub ' +
-            'JOIN parcelas p ON p.id_parcela = pub.id_parcela ' +
-            'JOIN usuarios u ON u.id_usuario = p.id_usuario ' +
+            'LEFT JOIN parcelas p ON p.id_parcela = pub.id_parcela ' +
+            'JOIN usuarios u ON u.id_usuario = pub.id_usuario ' +
             'JOIN productos pr ON pr.id_producto = pub.id_producto ' +
             'LEFT JOIN canales_venta ca ON ca.id_canal = pub.id_canal ' +
             'WHERE ' + where +
             ' ORDER BY pub.fecha DESC, pub.id_publicacion DESC' +
             ' LIMIT ? OFFSET ?',
-        [...params, q.limit, q.offset]
+        [usuario.id, ...params, q.limit, q.offset]
     );
 
     res.json({
@@ -144,37 +123,9 @@ router.get('/publicaciones', protegerRuta, validar(queryPublicaciones, 'query'),
 /**
  * POST /publicaciones
  *
- * body: { id_parcela, id_producto, cantidad, precio_unitario, fecha,
- *         id_canal?, ciclo?, notas? }
- *
- * 201 { mensaje, id_publicacion }
- * 409 no hay produccion disponible para esa cantidad
- * 404 parcela ajena, producto desactivado o canal inexistente
- *
- * fecha Y ciclo NO SON LO MISMO
- *
- * fecha es cuando se publica (ISO, "2026-09-29") y ciclo es de que temporada es
- * la mercaderia ("actual", "2026-A"). La regla de "no publicar mas de lo que se
- * produjo" compara contra produccion_parcelas del MISMO ciclo, asi que lo que
- * se usa para buscar la produccion es ciclo. Pasarle la fecha ahi era un bug:
- * "2026-09-29" no matchea nunca con un ciclo, toda publicacion moria en el 409
- * de "no hay produccion registrada".
- *
- * LOS TRES CAMPOS QUE EL ESQUEMA EXIGE
- *
- * publicaciones.id_usuario y publicaciones.id_canal son NOT NULL en el esquema.
- * El id_usuario sale SIEMPRE del token, nunca del cuerpo ni de la parcela.
- *
- * Antes el INSERT no llenaba id_usuario y MySQL rechazaba la fila con
- * "Field 'id_usuario' doesn't have a default value", un 500 que no le decia nada
- * a nadie. Llenarlo desde el token ademas elimina una fuente de error: si el
- * cliente mandara un id_usuario distinto, el INSERT lo ignora en vez de crear
- * una oferta a nombre de otro.
- *
- * id_canal es obligatorio en el esquema pero opcional en el API. Se resuelve
- * tomando el canal con el menor id, que es el canal por defecto. Es mejor eso que
- * volver obligatorio el campo: el formulario ya tiene una lista de canales y el
- * caso "no me importa el canal" es legitimo.
+ * fecha es cuando se publica; ciclo es de qué temporada es la mercadería.
+ * La regla de no publicar más de lo producido compara el mismo ciclo.
+ * id_usuario sale del token; si no mandan canal se usa el primero.
  */
 router.post(
     '/publicaciones',
@@ -195,7 +146,6 @@ router.post(
         };
 
         // id_parcela es opcional en el esquema a proposito (una oferta puede
-        // junta varias parcelas), pero si viene tiene que ser del usuario.
         if (cuerpo.id_parcela !== undefined) {
             const parcela = await parcelaDelUsuario(cuerpo.id_parcela, usuario.id);
             if (!parcela) {
@@ -209,8 +159,6 @@ router.post(
         }
 
         // Canal explicito, o el que exista. Se consulta en vez de suponer un id
-        // fijo porque si el catalogo de canales cambiara, un id supuesto
-        // empezaria a fallar sin que nadie tocara esa parte del codigo.
         let idCanal = cuerpo.id_canal ?? null;
 
         if (idCanal === null) {
@@ -227,13 +175,6 @@ router.post(
         }
 
         // La regla de fondo: no se publica mercaderia que no se produjo.
-        //
-        // La comparacion es sobre la produccion del MISMO ciclo de la
-        // publicacion, no sobre el total historico de la parcela, porque si no
-        // lo que se publico en el ciclo anterior volveria a estar disponible.
-        // id_parcela es NOT NULL en el esquema, asi que una oferta sin parcela no
-        // se puede insertar. Se dice con un mensaje claro en vez de dejar que
-        // MySQL rechace la fila con un 500.
         if (cuerpo.id_parcela === undefined) {
             throw new ErrorHttp(
                 400,
@@ -243,12 +184,6 @@ router.post(
         }
 
         // La regla de fondo: no se publica mercaderia que no se produjo.
-        //
-        // El ciclo va del cuerpo, NO de la fecha. La fecha dice cuando se publica
-        // y el ciclo dice de que temporada es la mercaderia, que son cosas
-        // distintas: se puede publicar hoy la cosecha de "2026-A". Antes se
-        // pasaba cuerpo.fecha aqui y la comparacion no encontraba la produccion
-        // nunca.
         const { disponible, publicado } = await disponibleParaPublicar(
             cuerpo.id_parcela,
             cuerpo.id_producto,
@@ -324,8 +259,6 @@ router.put(
         const { estado } = req.body as { estado: (typeof ESTADOS)[number] };
 
         // Se lee el estado actual para poder explicar por que la transicion no
-        // vale. El SELECT no es redundante con el UPDATE de abajo: aca es para
-        // el mensaje de error, que necesita saber de donde se pretendia ir.
         const [filas] = await pool.query<RowDataPacket[]>(
             'SELECT pub.estado FROM publicaciones pub ' +
                 'JOIN parcelas p ON p.id_parcela = pub.id_parcela ' +

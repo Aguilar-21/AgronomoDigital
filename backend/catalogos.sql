@@ -26,16 +26,6 @@ INSERT INTO `productos` (`id_producto`, `nombre`, `unidad`, `tipo_producto`, `ac
 /*!40000 ALTER TABLE `productos` ENABLE KEYS */;
 UNLOCK TABLES;
 
---
--- Dumping data for table `categorias_costos`
---
--- WHERE:  1=1
-
-LOCK TABLES `categorias_costos` WRITE;
-/*!40000 ALTER TABLE `categorias_costos` DISABLE KEYS */;
-INSERT INTO `categorias_costos` (`id_categoria`, `nombre`, `tipo_producto`, `es_fijo_default`) VALUES (1,'Agua','granos',0),(2,'Abono','granos',0),(3,'Semillas','granos',0),(4,'Herbicida','granos',0),(5,'Insecticida','granos',0),(6,'Maquinaria','granos',1),(7,'Mano de obra','granos',1),(8,'Agua','hortalizas',0),(9,'Abono','hortalizas',0),(10,'Semillas','hortalizas',0),(11,'Plaguicida','hortalizas',0),(12,'Insecticida','hortalizas',0),(13,'Maquinaria','hortalizas',1),(14,'Mano de obra','hortalizas',1),(15,'Agua','frutales',0),(16,'Abono','frutales',0),(17,'Poda','frutales',0),(18,'Plaguicida','frutales',0),(19,'Maquinaria','frutales',1),(20,'Mano de obra','frutales',1),(21,'Alimento del ganado','lacteos',0),(22,'Veterinario','lacteos',0),(23,'Energia','lacteos',1),(24,'Equipo','lacteos',0),(25,'Mano de obra','lacteos',1);
-/*!40000 ALTER TABLE `categorias_costos` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Dumping data for table `canales_venta`

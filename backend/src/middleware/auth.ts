@@ -1,20 +1,4 @@
-// middleware/auth.ts
-//
-// Verificacion del token JWT.
-//
-// QUE CAMBIA
-//
-// 1. res.locals.usuario tiene tipo. Antes era any: cualquier propiedad pasaba
-//    el typecheck, y un token mal formado pasaba hasta que una ruta hacia
-//    usuario.id y reventaba. Ver types/express.d.ts.
-//
-// 2. Se distingue token ausente de token invalido en el mensaje, pero ambos
-//    devuelven 401. La distincion es para el log, no para el cliente: si el
-//    401 dijera "el token no existe" frente a "el token vencio", un atacante
-//    podria distinguir tokens reales de inventados.
-//
-// 3. El id del usuario sale SIEMPRE del token, nunca del cuerpo de la peticion.
-//    Es la regla que sostiene el aislamiento entre usuarios del sistema.
+// Reviso el Bearer y dejo el usuario en res.locals.
 
 import jwt from 'jsonwebtoken';
 import type { RequestHandler } from 'express';
@@ -55,8 +39,6 @@ export const protegerRuta: RequestHandler = (req, res, next) => {
     }
 
     // Se verifica que el esquema sea Bearer. Antes se tomaba
-    // header.split(' ')[1] a ciegas, asi que un header "basico abc" pasaba y
-    // jwt.verify recibia "basico" como si fuera el token.
     const partes = header.split(' ');
 
     if (partes.length !== 2 || partes[0] !== 'Bearer' || !partes[1]) {
@@ -89,9 +71,6 @@ export const protegerRuta: RequestHandler = (req, res, next) => {
 
     if (!usuario) {
         // El token es criptograficamente valido pero no trae un id usable.
-        // Pasa si alguien lo firmo con la clave correcta pero con otro payload.
-        // Es raro, pero rechazarlo es lo correcto: la ruta no puede saber de
-        // quien es la peticion.
         logger.error(
             { ruta: req.originalUrl },
             'token valido sin id de usuario utilizable'

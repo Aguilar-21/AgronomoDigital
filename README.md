@@ -1,15 +1,8 @@
-# AgronoDigital
+﻿# AgronoDigital
 
-Sistema para pequeños y medianos productores agrícolas del estado Sucre. Cada agricultor
-registra sus parcelas, anota lo que le cuesta producir (insumos, mano de obra, maquinaria) y
-la API le dice si con el precio que hay en el mercado le sale a cuenta o está perdiendo plata.
+API para pequeÃ±os y medianos productores del estado Sucre. El productor registra sus parcelas y lo que siembra en cada una, y la API le estima el costo de insumos a partir de las dosis del cultivo y los precios vigentes de un documento oficial (o de un archivo de ejemplo, mientras tanto).
 
-Este README es la guía para el equipo de **frontend**. Si estás del lado de la interfaz, lo
-que necesitas está aquí y en `backend/API_DOCUMENTACION.md`, que tiene el detalle de cada
-endpoint. En `backend/src/` hay comentarios explicando el porqué de las decisiones que no se
-ven solo leyendo el código.
-
----
+Este README es para el equipo de frontend. El detalle de cada endpoint esta en `backend/API_DOCUMENTACION.md`. Aca esta lo que hay que saber antes de tocar la interfaz.
 
 ## Arrancar el backend
 
@@ -17,9 +10,11 @@ ven solo leyendo el código.
 cd backend
 npm install
 cp .env.example .env      # en Windows: copy .env.example .env
+npm run migrate
+npm run dev
 ```
 
-Abri `.env` y ponete tus datos de MySQL:
+AbrÃ­ `.env` y ponÃ© tus datos de MySQL:
 
 ```env
 DB_HOST=localhost
@@ -30,108 +25,32 @@ JWT_SECRETO=cualquier_cosa_larga_y_aleatoria_de_16_caracteres_o_mas
 PUERTO=3002
 NODE_ENV=development
 LOG_LEVEL=debug
+CORS_ORIGENES=
 ```
 
-`JWT_SECRETO` tiene que tener **16 caracteres o más**, y el servidor se niega a arrancar si es
-más corta. Generala con:
+Si la base es nueva, primero hay que crearla con `schema.sql` y `catalogos.sql`, despuÃ©s correr las migraciones y despuÃ©s cargar `catalogos_insumos.sql`. El orden estÃ¡ en `backend/API_DOCUMENTACION.md`, al final.
 
-```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
-```
+`JWT_SECRETO` tiene que tener 16 caracteres o mÃ¡s. Si falta o estÃ¡ corto, el servidor no arranca y dice quÃ©_variable revisar. Lo mismo pasa con las variables de MySQL: se validan todas al arrancar, no cuando falla la primera consulta.
 
-Ese es el único secreto que de verdad protege algo: si se filtra, cualquiera puede hacerse su
-propio token y entrar como cualquier usuario.
-
-Después crea la base y las tablas:
-
-```bash
-mysql -u root -e "CREATE DATABASE agronomodigital CHARACTER SET utf8mb4"
-mysql -u root agronomodigital < schema.sql
-mysql -u root agronomodigital < catalogos.sql
-```
-
-Y por último, corre las migraciones:
-
-```bash
-npm run migrate
-```
-
-Esto es **imprescindible**: el código actual consulta columnas con nombres nuevos
-(`precio_venta`, `produccion_estimada`, `ciclo`, `notas`) que `schema.sql` todavia no crea. Sin
-`npm run migrate` el servidor arranca bien y falla en la primera consulta con un error de
-"columna desconocida".
-
-`npm run migrate` es idempotente: guarda en la tabla `migraciones_aplicadas` quais ya corrieron
-y solo aplica las que faltan. Podés ejecutarlo las veces que quieras.
-
-Y al final:
-
-```bash
-npm run dev
-```
-
-Queda escuchando en `http://localhost:3002`. Fijate que responda con "Bienvenido a
-AgronoDigital" antes de empezar a conectarte desde el frontend.
-
-`npm run dev` usa `tsx watch`, o sea que reinicia solo cuando guardas un archivo. Si tocas el
-código y te sigue dando error, mira la terminal donde corre el servidor: casi siempre explica
-mejor el problema que el 500 que recibes.
-
-### Los scripts
-
-```bash
-npm run dev           # servidor con recarga automatica
-npm run build         # compila TypeScript a dist/
-npm start             # corre el build (node dist/server.js)
-npm run migrate       # aplica las migraciones pendientes
-npm test              # e2e.js: 107 comprobaciones contra la API local
-npm run test:unit     # Vitest: calculos puros, sin base de datos
-npm run test:instalacion  # arma una base temporal desde schema.sql y la valida
-npm run typecheck     # TypeScript sin emitir archivos
-```
-
-`npm run test:unit` es el que conviene correr mientras se programa: son 42 pruebas de la
-aritmetica de calculos y de las reglas de publicaciones, corren en milisegundos y no tocan MySQL.
+`HECTAREAS_POR_MANZANA` es opcional. Por defecto vale `0.6989`, que es la manzana salvadorena. Si en otro paÃ­s usan otra equivalencia, se cambia en el `.env` sin tocar el cÃ³digo.
 
 ---
 
-## Las seis cosas que hay que saber si o si
+## Las cosas que conviene saber antes de programar
 
-Antes de escribir código del frontend, hay seis detalles de esta API que te van a hacer
-perder tiempo si no los tenes presentes.
+### Los decimales llegan como texto
 
-### 1. Los números decimales llegan como texto.
-
-MySQL guarda los `DECIMAL` como texto. Si pides los costos de una parcela te va a llegar así:
+MySQL devuelve los `DECIMAL` como string. `tamano`, `superficie`, `produccion`, `cantidad`, `precio_unitario`, `subtotal` y `total_estimado` pueden venir como `"3.00"`. Sumarlos sin convertir concatena: `"10" + "5"` da `"105"`.
 
 ```js
-{ "monto": "45.50", "tipo_costo": "Semillas" }
+const total = Number(est.total_estimado) + Number(otro.total_estimado);
 ```
 
-`"45.50"` es un string, no el número 45.5. Si sumas dos costos sin convertir:
+Los `id_*`, `activo` y `es_ejemplo` llegan como nÃºmeros, esos no se tocan.
 
-```js
-costos.reduce((a, c) => a + c.monto, 0)     // "45.50" + "20.00" = "45.5020.00"  <- mal
-```
+### El token viaja en cada peticiÃ³n
 
-El `+` entre dos strings concatena en vez de sumar. Hay que convertir:
-
-```js
-costos.reduce((a, c) => a + Number(c.monto), 0)   // 65.5  <- bien
-```
-
-Esto aplica a todo lo que venga de una columna `DECIMAL`: `monto`, `precio_unitario`,
-`precio_venta`, `cantidad`, `tamano`, `produccion`, `costo_total`, `costo_unitario`. Los campos
-`id_*` y `es_fijo` si llegan como números, esos no los toques.
-
-Ojo: los cálculos de la API ya salen redondeados y convertidos. Los `DECIMAL` sin convertir son
-los de las listas CRUD: costos, producción, parcelas, precios.
-
-### 2. El token viaja en cada petición.
-
-Ocho rutas son abiertas: `GET /`, `POST /registro`, `POST /login`, los cuatro de catálogos
-(`/productos`, `/categorias-costos`, `/canales`, `/canales/:id/productos`) y `GET /health`.
-Todo lo demas pide el token:
+Estas rutas son abiertas: `GET /`, `GET /health`, `POST /registro`, `POST /login`, `GET /productos`, `GET /canales`, `GET /canales/:id/productos`, `GET /insumos`, `GET /categorias-insumos`, `GET /productos/:id/requerimientos` y `GET /fuentes-precio`. Todo lo demÃ¡s pide token:
 
 ```js
 fetch('http://localhost:3002/parcelas', {
@@ -139,647 +58,205 @@ fetch('http://localhost:3002/parcelas', {
 })
 ```
 
-Si lo olvidas te devuelve `401`. El token dura 2 horas, así que en algun momento te va a tocar
-manejar ese 401: lo ideal es un interceptor que, al recibirlo, limpie la sesión y mande al
-usuario a la pantalla de login.
+Tiene que ser exactamente `Bearer ` seguido del token. El token dura 2 horas: en algÃºn momento te va a tocar manejar el `401` con un interceptor que limpie la sesiÃ³n y mande al login.
 
-Ojo con el formato: tiene que ser exactamente `Bearer ` seguido del token. `basico abc` no
-funciona y devuelve 401.
+### Nunca se manda el id del usuario
 
-### 3. Nunca se manda el id del usuario.
+El backend lo saca del token, aunque lo mandes en el body se ignora. Eso es lo que impide que alguien vea o borre lo de otro cambiando un nÃºmero en el formulario.
 
-El backend lo sabe solo, lo saca del token. Aunque lo mandes en el body se ignora. Eso es
-intencionado: es lo que impide que alguien vea o borre las parcelas de otro modificando un
-número en el formulario.
+### Las respuestas no vienen envueltas
 
-Por eso la API no tiene ningun endpoint de borrado de cuenta: si algun día lo necesita, se
-agrega del lado del servidor.
-
-### 4. Las respuestas no vienen envueltas.
-
-`{ datos: [...] }` es el nombre que le puse a la variable que guarda el body parseado en el
-helper `api()` del frontend, no una envoltura que mande el backend. El servidor manda el objeto
-o el array directo:
+`datos` es el nombre de la variable donde guardo el body parseado en el helper `api()` del frontend. El backend manda el objeto o el array directo:
 
 ```js
-// GET /publicaciones  ->  es un objeto con las publicaciones adentro
-const r = await api("GET", "/publicaciones");
-r.publicaciones    // el array
-r.total            // cuanto hay en total, para el boton de "siguiente"
-
-// GET /parcelas  ->  es un array pelado
-const p = await api("GET", "/parcelas");
-Array.isArray(p) ? p : []
-
-// GET /parcelas/1/costo-unitario  ->  es un objeto pelado
-const cu = (await api("GET", "/parcelas/1/costo-unitario?id_producto=1")).datos;
-cu.costo_unitario
+const parcelas = await api('GET', '/parcelas');          // array
+const r = await api('GET', '/publicaciones');           // { publicaciones, total, limit, offset }
+const h = await api('GET', '/estimaciones');            // { estimaciones, total, limit, offset }
 ```
 
-`GET /publicaciones` y `GET /precios` son las únicas dos que devuelven un envoltorio, porque son
-las únicas dos paginadas y necesitan `total`, `limit` y `offset`. Todas las demas devuelven el
-recurso directo.
+Solo esas cuatro traen `total` porque son paginadas. `GET /precios` tambiÃ©n.
 
-### 5. Los campos viejos todavia salen, pero se van a quitar.
+### La fecha la pone el servidor
 
-Hubo un renombrado de columnas que mintian sobre lo que guardaban. El backend acepta y devuelve
-los dos nombres durante la transicion:
+En `POST /estimaciones` no se manda `fecha`. La fecha y la hora de cÃ¡lculo las pone el backend. AsÃ­ el historial no depende del reloj del navegador.
 
-| nombre viejo | nombre nuevo | cuando se va |
-|---|---|---|
-| `precio_venta_quintal` | `precio_venta` | cuando el frontend mande el nuevo |
-| `produccion_quintales` | `produccion_estimada` | cuando el frontend mande el nuevo |
-| `costo_quintal` | `costo_unitario` | cuando el frontend lea el nuevo |
-| `costo-total` (ruta) | `costo-unitario` (ruta) | cuando el frontend llame a la nueva |
+### Una estimaciÃ³n no es el costo total de producir
 
-Los nombres viejos no son aliases de adorno: siguen funcionando a proposito. Si actualizas el
-frontend a medias, el backend te sostiene. Lo que hay que evitar es la combinación inversa,
-porque ahí es donde aparecen los errores que nadie entiende.
+El total cubre **solo insumos**: semilla, fertilizantes, protecciÃ³n de cultivo. No incluye mano de obra, maquinaria, alquiler ni transporte. Cada respuesta lo dice en `alcance: "solo_insumos"` y en `advertencia`. Mostralo en pantalla, si no el usuario va a creer que ese nÃºmero es todo lo que le cuesta la cosecha.
 
-Cuando uses el nuevo, la respuesta te dice que migraste. En el caso de los precios viene un
-`aviso_deprecado`.
-
-El porqué del renombrado está en la sección "Los cálculos", más abajo. Es corto: hay 14 productos
-en 6 unidades y decir "quintal" era mentira.
-
-### 6. `null` y `0` no son lo mismo.
-
-En los cálculos, `null` significa "no hay con que calcular" y `0` significa "el cálculo dio
-cero". No los trates igual:
-
-- `costo_unitario: null` -> mostrar "faltan datos"
-- `costo_unitario: 0` -> mostrar 0, es real
-- `punto_equilibrio_unidades: 0` -> no tenes costos fijos, no necesitas vender nada
-- `punto_equilibrio_unidades: null` -> falta producción o falta precio
-
-El `null` viene con un campo `motivo` o `avisos` que dice que falta. Usalo.
+Los precios y las dosis que hay cargados ahora son de ejemplo. La fuente estÃ¡ marcada con `es_ejemplo: 1` y la estimaciÃ³n viene con `datos_ejemplo: true`. PonÃ© un aviso en la interfaz hasta que se cargue el documento real.
 
 ---
 
-## Como es el login
+## Registro y login
 
 ```
-POST /registro   { nombre, correo, contrasena }   -> 201
-POST /login      { correo, contrasena }           -> 200 { token }
+POST /registro   { usuario, nombre, correo, contrasena }   -> 201 { id_usuario, usuario }
+POST /login      { identificador | usuario | correo, contrasena } -> 200 { token }
 ```
 
-Después del login, `token` es lo único que guardas:
+`usuario` va de 3 a 30 caracteres, empieza con letra y sigue con letras, nÃºmeros, punto, guion o guion bajo. El correo y el usuario se guardan en minÃºsculas y no se pueden repetir. La contraseÃ±a necesita mÃ­nimo 8 caracteres.
 
-```js
-const { token } = await (await fetch('http://localhost:3002/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ correo, contrasena })
-})).json()
-```
-
-Un par de detalles:
-
-El correo se normaliza solo (recorta espacios y pasa a minúsculas), así que `Juan@Correo.COM` y
-`juan@correo.com` son la misma cuenta. No hace falta que lo hagas vos.
-
-La contraseña necesita mínimo 8 caracteres. Si el correo ya está registrado el registro devuelve
-`409`, no `400`. El `409` es a proposito, para que puedas mostrar "ese correo ya tiene cuenta" sin
-estar adivinando por el texto del error.
-
-El login devuelve `401` con `"Correo o contrasena incorrectos"` tanto si el correo no existe como
-si la contraseña está mal. El mensaje es exactamente el mismo en los dos casos, a proposito: si
-distinguiera entre "ese correo no existe" y "esa contraseña no es la correcta", el formulario de
-login se volveria un buscador de que correos tienen cuenta en la plataforma.
+El login devuelve el mismo mensaje de error si la cuenta no existe que si la contraseÃ±a estÃ¡ mal. Es a propÃ³sito: si distinguiera, el formulario se volverÃ­a un buscador de quÃ© correos tienen cuenta.
 
 ---
 
-## Catálogos
+## Parcelas y siembras
 
-Son cuatro endpoints de solo lectura que existen para llenar los `<select>` del frontend. No se
-crean ni se editan desde la interfaz, y **no piden token**.
+Esto es lo que mÃ¡s cambiÃ³ respecto del sistema viejo. Una **parcela** es el terreno. Una **siembra** es un cultivo dentro de ese terreno, con su superficie y su producciÃ³n. Un lote de 5 manzanas con 3 de maÃ­z y 2 de frijol son **dos siembras**, no dos parcelas.
 
-**`GET /productos`** te da el catálogo completo:
+`parcelas.tamano` es el total del terreno y sirve solo como referencia. El cÃ¡lculo de insumos usa siempre la superficie de la siembra.
 
-```json
-[
-  { "id_producto": 1, "nombre": "Maiz Blanco", "unidad": "quintal", "tipo_producto": "granos" },
-  { "id_producto": 6, "nombre": "Chile Verde", "unidad": "caja", "tipo_producto": "hortalizas" }
-]
+### Parcelas
+
+```
+GET    /parcelas              solo las tuyas
+GET    /parcelas/:id
+POST   /parcelas              { nombre_parcela, ubicacion?, tamano?, unidad_superficie? }
+PUT    /parcelas/:id          actualiza solo los campos que mandes
+DELETE /parcelas/:id
 ```
 
-Son 14 productos repartidos en cuatro tipos: `granos`, `hortalizas`, `frutales`, `lacteos`. El
-campo `unidad` es importante: un producto se puede vender en quintal, en caja, en libra o en
-unidad, y de eso depende como se lea el costo que te devuelven los cálculos.
+`unidad_superficie` es `hectarea` o `manzana`, por defecto `hectarea`. Al borrar la parcela se van sus siembras en cascada. Las publicaciones que se hicieron desde esa parcela quedan en el mercado con `id_parcela: null`.
 
-Solo devuelve los productos activos (`activo = 1`). Los dados de baja no se ofrecen para vender.
+### Siembras
 
-**`GET /canales`** son los cuatro canales de venta: Mercado local, Intermediario (Coyote),
-Exportacion / Bolsa, Procesadora. Ojo, el tercero viene sin tilde en la base: si lo comparas con
-`"Exportacion / Bolsa"` no va a hacer match.
-
-**`GET /canales/:id/productos`** devuelve que productos se venden por ese canal, con nombre y
-unidad ya resueltos. Antes cada precio traia el nombre del canal y había que filtrar en el
-frontend; esto lo resuelve la base.
-
-**`GET /categorias-costos?tipo=granos`** es el que más te va a interesar. Devuelve que categorías
-de gasto aplican a un tipo de producto:
-
-```json
-[
-  { "id_categoria": 3, "nombre": "Semillas",     "tipo_producto": "granos", "es_fijo_default": false },
-  { "id_categoria": 7, "nombre": "Mano de obra", "tipo_producto": "granos", "es_fijo_default": true  }
-]
 ```
-
-La idea del formulario de costos es esta: el usuario elige el producto, y vos hace
-`GET /categorias-costos` con el `tipo_producto` de ese producto y le mostras los campos de gasto
-que de verdad le aplican. Si cultiva maiz le sale Semillas, Abono, Herbicida, Mano de obra. Si
-cultiva tomate, le sale Agua, Plaguicida, Insecticida. No hay que mostrarle las 25 categorías
-juntas.
-
-`es_fijo_default` te dice si esa categoría viene fijada como costo fijo o variable. Es un default,
-o sea una sugerencia para marcar la casilla, pero el usuario debería poder cambiarla porque
-depende de su parcela.
-
-Si falta el `?tipo=`, la API devuelve `400` diciendo "Falta el parámetro ?tipo=". El `400` es
-mejor que devolver `[]`: una lista vacía no te dice si te equivocaste en el nombre del tipo o si
-ese tipo no tiene categorías.
-
----
-
-## Parcelas
-
-Es la base de todo lo demas, así que conviene entenderla bien. Cada parcela es de un solo usuario
-y las demas personas no la ven.
-
-**`GET /parcelas`** te devuelve las tuyas, y solo las tuyas. Si no tienes ninguna devuelve `[]`,
-no `null`.
-
-**`GET /parcelas/:id`** (ruta nueva) devuelve una sola parcela. Antes para ver una parcela había
-que bajar el listado completo y buscar a mano.
-
-**`POST /parcelas`**
-
-```json
-{
-  "nombre_parcela": "Lote sur",
-  "ubicacion": "Sector El Zinc",
-  "tamano": 2.5,
-  "produccion_estimada": 100
-}
+GET    /parcelas/:id/siembras              acepta ?id_producto= y ?ciclo=
+POST   /parcelas/:id/siembras
+DELETE /siembras/:id
 ```
-
-De esos cuatro campos solo `nombre_parcela` es obligatorio. `tamano` y `produccion_estimada` son
-opcionales y se guardan como `null` si no los mandas.
-
-Sobre `produccion_estimada`: es un **número único para toda la parcela**, no por producto. Sirve
-cuando la parcela tiene un solo cultivo. Si tiene más de uno, el total mezcla unidades y no
-significa nada: por eso existe la producción por producto (más abajo).
-
-**`PUT /parcelas/:id`** es parcial de verdad: actualiza solo los campos que le mandes. Podés
-mandar únicamente `{ "ubicacion": "otro sitio" }` y el nombre, el tamano y la producción se quedan
-como estaban. Antes un PUT parcial borraba los campos que no venian.
-
-**`DELETE /parcelas/:id`** borra la parcela y también todos sus costos y sus registros de
-producción por producto, porque las llaves foraneas están en cascada. No hay que ir a borrarlos
-uno por uno. Las publicaciones que se habían hecho desde esa parcela **no** se borran: quedan en
-el mercado con la parcela en `null`. Si la parcela no es tuya te devuelve `404`.
-
----
-
-## Producción por producto
-
-`produccion_parcelas` es un registro por `(parcela, producto, ciclo)`, con la producción **en la
-unidad del producto**: quintales si se vende en quintales, cajas si se vende en cajas.
-
-Esto importa por una razón concreta: una parcela puede tener 200 cajas de tomate y 50 quintales
-de maiz. Si divides los costos entre "250 de algo", el producto que tiene más cajas se lleva la
-mayoría del reparto solo porque los números son más grandes, no porque valga más.
-
-**`POST /parcelas/:id/produccion`**
-
-```json
-{ "id_producto": 1, "produccion": 100, "ciclo": "actual" }
-{ "id_producto": 5, "produccion": 200, "ciclo": "actual" }
-```
-
-`ciclo` es opcional y vale `"actual"` si no lo mandas. Sirve para llevar dos siembras del mismo
-producto por separado (`2026-A` y `2026-B`); los cálculos suman los ciclos.
-
-Como `(id_parcela, id_producto, ciclo)` es único, esta ruta es un **upsert**: si esa combinación
-ya existe la actualiza y devuelve `200`, si no la crea y devuelve `201`.
-
-```json
-{ "mensaje": "Produccion registrada", "id_producto": 1, "unidad": "quintal", "ciclo": "actual" }
-{ "mensaje": "Produccion actualizada", "id_producto": 5, "unidad": "caja", "ciclo": "actual" }
-```
-
-Fijate que la respuesta trae `unidad`: sale del catálogo de productos, así no tenes que cruzar
-ids contra `GET /productos`.
-
-**`GET /parcelas/:id/produccion`** devuelve la lista con nombre y unidad ya resueltos, y acepta
-`?id_producto=N` y `?ciclo=`.
-
-**`DELETE /produccion/:id`** borra un registro puntual.
-
-### El fallback se elimino
-
-Antes, si un producto no tenia producción registrada, la API caía a
-`parcelas.produccion_estimada` como plan B. Eso mezclaba unidades: una parcela con 100 quintales
-de maiz consultada por tomate devolvia "100 cajas de tomate", y el costo por caja salia de un
-número que no era de cajas.
-
-El número salia y parecia legitimo, que es peor que no devolver nada.
-
-Ahora, si el producto no tiene producción registrada, el cálculo devuelve `null` y te dice por que
-en `avisos`. Si el usuario quiere calcular sobre toda la parcela sin filtrar por producto, para
-eso está `produccion_estimada`, y la respuesta lo declara con `origen_produccion: "parcela"`.
-
-Los tres valores posibles de `origen_produccion`:
-
-| valor | que significa |
-|---|---|
-| `por_producto` | el número viene de `produccion_parcelas`, es de ese cultivo |
-| `parcela` | el número es el total de la parcela, no de un cultivo. Mezcla unidades |
-| `sin_datos` | no hay producción registrada, el cálculo da `null` |
-
-**El `parcela` con un `id_producto` es el caso que tenes que avisarle al usuario.** Significa que
-le estas mostrando un costo por unidad calculado sobre un total que no es de ese producto.
-
----
-
-## Precios de mercado
-
-El historial de precios es lo único global del sistema, junto con los catálogos. Le sirve igual a
-todos los usuarios, así que no lleva `id_usuario` y cualquiera autenticado puede escribir y leer.
-
-**`POST /precios`**
 
 ```json
 {
   "id_producto": 1,
-  "id_canal": 1,
-  "fecha": "2026-09-29",
-  "precio_venta": 55.00
-}
-```
-
-El nombre `precio_venta` es el nuevo. El viejo `precio_venta_quintal` todavia se acepta y durante
-la transicion te responde con `aviso_deprecado` si lo usaste. Si mandas los dos, gana
-`precio_venta`.
-
-Los tres primeros campos son opcionales menos la fecha: si no mandas producto ni canal, el precio
-queda como referencia general.
-
-El porqué del renombrado: cuando el sistema se armo todos los productos se median en quintales, y
-así se quedo el nombre de la columna. Pero el valor es el precio de **una unidad del producto**: si
-el producto se vende en caja, esos `55.00` son 55 por caja. El frontend tiene que armar la
-etiqueta usando la `unidad` de `GET /productos`, tipo "55.00 / caja", no "55.00 / quintal".
-
-**`GET /precios`** devuelve el historial, paginado. Acepta `?id_producto=`, `?id_canal=`,
-`?limit=` y `?offset=`.
-
-```js
-const r = await api("GET", "/precios?id_producto=1&limit=20");
-r.precios   // el array
-r.total     // cuantos hay en total
-```
-
-**`GET /precios/ultimo?id_producto=N`** (ruta nueva) devuelve solo el último precio, que es lo que
-necesita la pantalla de punto de equilibrio. Antes había que bajar el historial entero y tomar el
-primero. Acepta `?id_canal=` también. Si no hay ningun precio devuelve `precio_venta: null`.
-
-**`DELETE /precios/:id`** borra un registro del historial. Ojo con esto, porque es distinto a los
-otros borrados del sistema: los precios son globales, así que **cualquier usuario puede borrar un
-precio que otro registro**. Es aceptable porque es un dato de referencia público, pero si más
-adelante queres que solo quien lo registro pueda tocarlo, hay que agregar `id_usuario` a la tabla.
-
----
-
-## Costos
-
-**`POST /costos`**
-
-```json
-{
-  "id_parcela": 1,
-  "id_producto": 1,
-  "tipo_costo": "Semillas",
-  "descripcion": "Semilla certificada",
-  "monto": 45.50,
-  "fecha": "2026-09-29",
-  "es_fijo": false,
-  "ciclo": "actual"
-}
-```
-
-`id_parcela` es obligatorio y se valida contra el usuario: si no es tuya te devuelve 404.
-
-`id_producto` es opcional. Si no lo mandas, el costo queda como **general** de la parcela. Si lo
-mandas, ese costo se suma solo en los cálculos de ese producto.
-
-`es_fijo` va como `true` o `false`, no como 1 y 0. Desde JavaScript manda el booleano, que queda
-más claro.
-
-`ciclo` es opcional y vale `"actual"`. Esto es importante: sin ciclo, los costos de dos temporadas
-se suman contra la producción de una sola, y el punto de equilibrio sale de una mezcla que no
-describe ninguna temporada. El detalle está en la migración `002_ciclos.sql`.
-
-`fecha` es obligatoria y se valida como fecha. Antes si no la mandabas MySQL rechazaba la fila con
-un 500 que decia "Field 'fecha' doesn't have a default value", que no le dice nada a nadie.
-
-**`GET /parcelas/:id/costos`** te devuelve la lista con `producto` y `unidad` ya resueltos, para que
-puedas mostrar "Semillas - Maiz Blanco (quintal)" sin hacer una consulta extra por cada costo.
-Acepta `?id_producto=`, `?ciclo=` y `?es_fijo=true|false`.
-
-**`PUT /costos/:id`** actualiza solo los campos que le mandes. Podés mandar únicamente
-`{ "monto": 50 }` si solo queres corregir el monto.
-
-**`DELETE /costos/:id`** lo borra. Solo si es tuyo.
-
----
-
-## Los cálculos
-
-Acá está la parte que conviene mirar con calma.
-
-Hay dos rutas y hacen cosas distintas:
-
-| ruta | que devuelve |
-|---|---|
-| `GET /parcelas/:id/costo-total` | solo la suma de costos |
-| `GET /parcelas/:id/costo-unitario` | el costo por unidad del producto |
-| `GET /parcelas/:id/punto-equilibrio` | cuántas unidades hay que vender |
-
-La primera acepta `?id_producto=` y `?ciclo=` y nada más. Las otras dos aceptan además
-`?id_canal=` y `?repartir_generales=`.
-
-**Sin `id_producto` no funcionan los dos últimos** y devuelven `400` con un mensaje que lo explica.
-No es un detalle: "costo unitario" de que si hay 14 productos en 6 unidades distintas. Si solo
-necesitas saber cuánto gastaste en total, para eso está `costo-total`, que si funciona sin filtro.
-
-Además hay una ruta nueva, **`GET /parcelas/:id/disponible`**, que te dice cuánta mercadería
-queda sin publicar. Sirve para que el formulario de publicar no deje mandar una cantidad que el
-backend va a rechazar:
-
-```js
-const d = await api("GET", "/parcelas/1/disponible?id_producto=1");
-d.disponible   // cuanto queda sin publicar
-d.publicado    // cuanto se publico ya
-d.unidad       // "quintal"
-```
-
-`disponible: null` significa que no hay producción registrada para ese producto. `0` significa que
-hay producción y no queda nada.
-
-### Los costos generales
-
-Un costo sin `id_producto` es general de la parcela: el alquiler, la vigilancia, el transporte. No
-es de ningun cultivo en particular.
-
-Antes, al calcular el costo de un producto, esos costos se perdían en silencio: el costo del maiz
-no incluia el alquiler, y nadie se enteraba de que faltaba una parte. Ahora los generales se
-devuelven **aparte**:
-
-```json
-{
-  "costosProductoTotal": 5000,
-  "costosGenerales": 2000,
-  "costosGeneralesAtribuidos": 0,
-  "costoUnitarioDirecto": 50,
-  "costoUnitario": 50
-}
-```
-
-Con `?repartir_generales=true` se atribuyen al producto:
-
-```json
-{
-  "costosProductoTotal": 5000,
-  "costosGenerales": 2000,
-  "costosGeneralesAtribuidos": 1000,
-  "costoUnitarioDirecto": 50,
-  "costoUnitarioGeneral": 10,
-  "costoUnitario": 60
-}
-```
-
-**Por que es opcional y no automático.** El reparto es una estimación, no un dato. Depende de que
-los precios esten actualizados y de que la producción registrada sea completa. Si va por defecto
-dentro del número que el usuario usa para fijar su precio de venta, estarias metiendo una
-suposición dentro de un dato sin que nada en la pantalla lo diga.
-
-Como opción del lado del cliente, podés mostrar las dos cosas: el costo directo, que es un dato, y
-el costo con generales repartidos, que es una estimación. Que se vea cuál es cuál.
-
-**Como se reparte.** Por **valor de la producción**: `precio x cantidad` de cada producto. El
-resultado de esa multiplicación es dinero, y el dinero si se puede sumar entre cultivos distintos.
-Las cantidades no: "200 cajas + 50 quintales" no es 250 de nada.
-
-Si algun producto de la parcela no tiene precio registrado, **no se reparte nada** y te avisa por
-que en `motivo`. Repartir a partes iguales entre los que si tienen precio asignaria al maiz una
-parte de la cosecha de tomate sin ninguna base, que es peor que decir que no se puede repartir.
-
-### La fórmula del punto de equilibrio
-
-```
-costo_variable_unidad      = costos_variables / produccion
-margen_contribucion        = precio_venta - costo_variable_unidad
-punto_equilibrio_unidades  = costos_fijos / margen_contribucion
-```
-
-Qué en palabras es: cuánto te cuesta cada unidad, cuánto te queda después de venderla, y cuántas
-unidades tenes que vender para tapar los costos fijos. Si te da 1.83 quintales, significa que
-vendiendo 2 quintales ya empezaste a ganar.
-
-El campo `punto_equilibrio_unidades_redondeado` viene redondeado hacia arriba. Vender 100.4
-unidades no alcanza: hay que vender 101. Es el número que tenes que mostrar al usuario.
-
-### Los casos que hay que no mezclar
-
-`punto_equilibrio_unidades` llega en `null` en tres situaciones distintas, y **las tres son
-"faltan datos"**:
-
-- no hay producción registrada para el producto
-- no hay precio registrado para ese producto o canal
-- el precio es igual o menor que el costo variable
-
-En el último caso el `null` es importante: si el margen es exactamente 0, la fórmula da fijos
-dividido por 0, que es infinito, y al serializar a JSON eso se convierte en `null`. Antes el
-cliente recibia un `null` sin saber por que. Ahora hay un `motivo` que lo explica.
-
-El `0` es un resultado **válido** y es un caso distinto: si no tenes **costos fijos**, el punto de
-equilibrio da `0` porque no hay nada que recuperar. No lo trates como "faltan datos", porque el
-usuario registro todo y lo que le corresponde es "no necesitas vender nada para no perder".
-
-### Los nombres de los campos
-
-| antes | ahora |
-|---|---|
-| `costo_variable_quintal` | `costo_variable_unidad` |
-| `punto_equilibrio_quintales` | `punto_equilibrio_unidades` |
-| `costo_quintal` | `costo_unitario` |
-| `precio_venta_quintal` | `precio_venta` |
-| `produccion_quintales` | `produccion_estimada` |
-
-Los nombres nuevos no son capricho. Como los productos tienen unidades distintas, decir "quintal"
-mentia: el cálculo es sobre la unidad del producto, que puede ser una caja, una jaba, un ciento o
-una libra.
-
-Y `produccion_quintales` era la peor de todas, porque esa columna es un único total para toda la
-parcela y el código la usaba como plan B cuando un producto no tenia producción registrada. El
-nombre hacia creer que el dato estaba en quintales cuando en realidad no era de ningun producto en
-particular. Ver "El fallback se elimino", más abajo.
-
----
-
-## El mercado
-
-**`POST /publicaciones`**
-
-```json
-{
-  "id_parcela": 1,
-  "id_producto": 1,
-  "id_canal": 1,
-  "cantidad": 100,
-  "precio_unitario": 55.00,
-  "fecha": "2026-09-29",
+  "produccion": 100,
   "ciclo": "actual",
-  "notas": "Cosecha de esta semana"
+  "superficie": 3,
+  "unidad_superficie": "manzana"
 }
 ```
 
-`id_parcela` es **obligatorio**, aunque en el esquema sea `NOT NULL` de todas formas y antes se
-podia omitir. Se necesita para comprobar que hay producción disponible. Si mandas una parcela que
-no es tuya te devuelve 404.
+`produccion` va en la unidad del producto (quintales para el maÃ­z, cajas para el tomate). El backend no la convierte. `ciclo` vale `"actual"` si no lo mandÃ¡s; sirve para llevar dos temporadas del mismo cultivo por separado.
 
-`id_canal` es opcional: si no lo mandas se usa el primer canal de la base.
-
-**`fecha` y `ciclo` son cosas distintas, y confundirlas te da un error que miente.**
-
-- `fecha` es **cuándo** se publica. Va en formato ISO, tipo `"2026-09-29"`.
-- `ciclo` es **de qué temporada** es la mercadería. Valores como `"actual"` o `"2026-A"`.
-
-La regla de "no publicar más de lo que se produjo" compara contra la producción del **mismo ciclo**,
-así que lo que se usa para buscarla es `ciclo`, no `fecha`. `ciclo` es opcional y vale `"actual"`,
-que es el mismo valor que usa `POST /parcelas/:id/produccion` cuando no le mandás ciclo. En el caso
-común no tenés que mandar nada.
-
-Vale la pena que lo sepas porque el error engaña: si mandás `ciclo: "2026-09-29"` te devuelve un
-`409` de "no hay producción registrada" aunque la parcela tenga de sobra. Es que esa fecha es una
-fecha y no un nombre de temporada, y la búsqueda no encuentra nada con ese valor.
-
-Si registraste producción con un ciclo propio, mandá **el mismo** en los dos endpoints.
-
-Fijate que **`estado` no va en el body**. La publicación nace `disponible` sola, y después se cambia
-con el endpoint siguiente. Si el cliente pudiera mandar el estado, podría publicar ya "vendido" y
-saltarse la regla de negocio. Si lo mandas igual, el backend lo ignora.
-
-### No se puede publicar más de lo que se produjo
-
-Esta es la regla de fondo del mercado y es nueva. El backend comprueba la producción registrada
-del mismo ciclo y rechaza lo que sobra, con `409`:
-
-```
-No hay suficiente produccion disponible. Pediste 500 caja y hay 100 caja sin publicar
-(ya publicados: 0).
-```
-
-Antes el backend aceptaba cualquier cantidad y el error se descubria en la vida real: 500 cajas
-publicadas de una parcela que dio 100.
-
-Si el producto no tiene producción registrada en esa parcela, también `409`, con un mensaje que
-dice que registre la producción primero.
-
-Para no hacer un viaje de ida y vuelta en cada intento, consulta
-`GET /parcelas/:id/disponible` antes de mostrar el formulario.
-
-### Los estados
-
-Una publicación nace `disponible` y se mueve desde ahí:
-
-```
-disponible  ->  vendido
-disponible  ->  retirado
-vendido     ->  (nada)
-retirado    ->  (nada)
-```
-
-Qué `vendido` y `retirado` sean finales es una decisión. Una venta cerrada no se reabre desde el
-tablero: si el comprador devolvio la mercadería, el camino correcto es retirar la publicación vieja
-y crear una nueva, que queda registrada con su fecha y su historial. Reabrir en el sitio borra el
-rastro de que hubo una venta.
-
-Una transicion inválida devuelve `409` diciendo cuál era el estado actual y a que si se puede ir.
-
-**`GET /publicaciones/:id/estado?estado=vendido`** (ruta nueva) te dice si la publicación puede
-pasar a ese estado, sin intentar:
-
-```json
-{ "puede": false, "estado_actual": "vendido", "estado_destino": "vendido", "ya_esta_ahi": true }
-{ "puede": false, "estado_actual": "vendido", "estado_destino": "retirado", "motivo": "..." }
-```
-
-Sirve para que deshabilites el botón de "marcar vendido" en vez de dejar que el usuario lo pulse y
-reciba un 409.
-
-### El listado
-
-**`GET /publicaciones`** es la única ruta del proyecto que **no** filtra por usuario, y es a
-proposito: el mercado es público, todos tienen que poder ver lo que ofrece la demas gente. El token
-sigue siendo obligatorio para que la API no quede abierta, pero no se usa para filtrar.
-
-Acepta filtros que se pueden combinar, más paginación:
-
-```js
-GET /publicaciones                                     // todas
-GET /publicaciones?estado=disponible                   // solo las que siguen disponibles
-GET /publicaciones?estado=disponible&id_producto=3
-GET /publicaciones?mias=true                           // solo las del usuario logueado
-GET /publicaciones?limit=20&offset=40                  // segunda pagina
-```
-
-Los valores válidos de estado son `disponible`, `vendido` y `retirado`. Si mandas algo distinto te
-devuelve `400` con un mensaje que incluye la lista, así que podés usar esa lista para armar tu
-selector sin tenerla duplicada en el frontend.
-
-`limit` va de 1 a 100, con 50 por defecto. `offset` arranca en 0.
-
-Cada publicación llega con todo resuelto: nombre del producto, unidad, canal, nombre del
-agricultor y nombre de la parcela. No hace falta un GET por cada id.
-
-El `total` va aparte porque es lo que permite el botón de "siguiente página": sin el, el frontend
-no sabe si hay más y tendría que traer una página extra para enterarse.
+La combinaciÃ³n `(id_parcela, id_producto, ciclo)` es Ãºnica, asÃ­ que `POST` es un upsert: crea con `201`, actualiza con `200`. La respuesta trae `unidad` del catÃ¡logo para que no tengas que cruzar ids.
 
 ---
 
-## códigos de error y que hacer con cada uno
+## EstimaciÃ³n de insumos
 
-| código | que paso | que hay que hacer en el frontend |
+La cuenta es:
+
+```
+superficie en hectÃ¡reas Ã— dosis por hectÃ¡rea Ã— precio vigente
+```
+
+El usuario elige el cultivo y la superficie, y el servidor busca las dosis y los precios. No manda dosis ni precios: si pudiera mandarlos, el nÃºmero dejarÃ­a de ser una estimaciÃ³n basada en una fuente.
+
+```
+POST /estimaciones
+GET  /estimaciones              historial, con ?limit= y ?offset=
+GET  /estimaciones/:id          con su desglose
+```
+
+```json
+{
+  "id_producto": 1,
+  "superficie": 3,
+  "unidad_superficie": "manzana",
+  "id_fuente": 1,
+  "id_parcela": 12
+}
+```
+
+`id_fuente` es obligatorio para saber despuÃ©s con quÃ© precios se calculÃ³. `id_parcela` es opcional: se puede estimar antes de registrar la parcela. La fecha la pone el servidor.
+
+Respuesta:
+
+```json
+{
+  "id_estimacion": 5,
+  "superficie_ha": 2.0967,
+  "total_estimado": 501.35,
+  "moneda": "USD",
+  "alcance": "solo_insumos",
+  "advertencia": "El total cubre solo insumos...",
+  "datos_ejemplo": true,
+  "detalle": [
+    { "insumo": "Urea 46%", "cantidad": 419.34, "precio_unitario": 0.55, "subtotal": 230.64 }
+  ]
+}
+```
+
+Errores propios de esta ruta: `409` si el cultivo no tiene dosis registradas o la fuente no tiene precio para algÃºn insumo; `404` si el cultivo, la fuente o la parcela no existen o no son tuyos.
+
+Para mostrar la receta antes de estimar, `GET /productos/:id/requerimientos` devuelve los insumos y las dosis por hectÃ¡rea de ese cultivo. Un cultivo sin receta devuelve `[]`; la estimaciÃ³n devuelve `409`.
+
+---
+
+## CatÃ¡logo de insumos
+
+Son pÃºblicos, no piden token:
+
+```
+GET /categorias-insumos
+GET /insumos?id_categoria_insumo=1
+GET /fuentes-precio
+GET /productos/:id/requerimientos
+```
+
+`GET /fuentes-precio` sirve para armar el `<select>` de `id_fuente` y para mostrar de dÃ³nde vienen los precios. Trae instituciÃ³n, tÃ­tulo, fecha, URL, `es_ejemplo` y cuÃ¡ntos precios tiene cargados.
+
+TambiÃ©n estÃ¡n `GET /productos` (14 cultivos activos, con su unidad de venta) y `GET /canales` (4 canales). El campo `unidad` del producto es el que hay que usar en las etiquetas: "55 / caja", no "55 / quintal".
+
+---
+
+## Mercado
+
+```
+POST /publicaciones              { id_parcela, id_producto, id_canal?, cantidad, precio_unitario, fecha, ciclo? }
+GET  /publicaciones              mercado completo, con filtros y paginaciÃ³n
+PUT  /publicaciones/:id/estado   { estado: "vendido" | "retirado" }
+GET  /publicaciones/:id/estado?estado=vendido
+GET  /parcelas/:id/disponible?id_producto=1&ciclo=actual
+```
+
+`estado` no se manda en el `POST`: la publicaciÃ³n nace `disponible`. `disponible` puede pasar a `vendido` o `retirado`, y esos dos son finales. Una transiciÃ³n invÃ¡lida da `409`.
+
+No se puede publicar mÃ¡s de lo que se registrÃ³ en esa siembra y ese ciclo. El error dice cuÃ¡nto pediste y cuÃ¡nto queda. Para no hacer un viaje de ida y vuelta en cada intento, consultÃ¡ `GET /parcelas/:id/disponible` antes de mostrar el formulario. Ojo: `disponible: null` significa que no hay siembra registrada, `0` significa que hay y no queda nada.
+
+`GET /publicaciones` ve el mercado de todos (por eso no filtra por usuario), pero sigue pidiendo token. Acepta `?estado=`, `?id_producto=`, `?mias=true`, `?limit=` y `?offset=`. Cada fila trae `mia: 1` si es tuya y `0` si no, para que no tengas que comparar ids en el frontend. `nombre_parcela` puede venir `null` si la parcela se borrÃ³.
+
+---
+
+## Precios de venta
+
+El historial de precios es global: lo ven y lo escriben todos los usuarios autenticados. No confundir con los precios de insumos, que vienen de una fuente y se consultan en `GET /fuentes-precio`.
+
+```
+GET    /precios?id_producto=1&id_canal=1&limit=50&offset=0   -> { precios, total, limit, offset }
+GET    /precios/ultimo?id_producto=1
+POST   /precios    { id_producto, id_canal, fecha, precio_venta }
+DELETE /precios/:id
+```
+
+El nombre correcto es `precio_venta`. El viejo `precio_venta_quintal` todavÃ­a se acepta y se devuelve con el mismo valor, pero la respuesta trae `aviso_deprecado`. El valor es el precio de **una unidad del producto**: armÃ¡ la etiqueta con la `unidad` de `GET /productos`.
+
+---
+
+## Errores
+
+| cÃ³digo | quÃ© pasÃ³ | quÃ© hacer en el frontend |
 |---|---|---|
-| `400` | falta un campo, o un número vino en cero, negativo, o con letras | mostrar el mensaje de `error` junto al campo que corresponda |
-| `401` | no hay token, ya expiro, o tiene formato incorrecto | limpiar sesión y mandar a login |
-| `403` | no se usa, nunca llega | - |
-| `404` | no existe, o no es tuyo, o el `id_producto` no existe | mensaje de "no encontrado", no de "error del sistema" |
-| `409` | correo duplicado, o no hay producción disponible para publicar | mensaje específico, el texto dice cuál de las dos cosas |
-| `500` | se rompio algo adentro | mostrar algo genérico, no el detalle |
+| `400` | falta un campo o un nÃºmero no es vÃ¡lido | mostrar `error` junto al campo |
+| `401` | sin token, token vencido o mal formado | limpiar sesiÃ³n e ir al login |
+| `404` | no existe o no es tuyo | mensaje de "no encontrado" |
+| `409` | duplicado, estado invÃ¡lido, o faltan dosis/precios | mostrar el mensaje concreto |
+| `500` | error inesperado | mensaje genÃ©rico; el detalle queda en el log |
 
-El `404` cumple doble función a proposito: tanto "este recurso no existe" como "este recurso es de
-otro usuario" devuelven `404` y no `403`. así no se puede usar la API para averiguar que ids
-existen en cuentas ajenas.
+El `404` se usa tanto para "no existe" como para "es de otro usuario", a propÃ³sito: asÃ­ no se puede usar la API para averiguar quÃ© ids existen en cuentas ajenas. El `403` no se usa.
 
-La validación de los parámetros es la que evita la mayoría de los 500. Antes, mandar
-`?id_producto=abc` a un endpoint de cálculo reventaba el servidor con un 500, porque el backend
-hacia la conversion a número y le restaba a `undefined`. Ahora devuelve `400` diciendo que espera
-un número.
-
-Ojo con un caso que cambio: un filtro con un valor que no se puede convertir **no se ignora**, se
-rechaza. Antes `?id_producto=abc` se trataba como "sin filtro", y eso devolvia la lista COMPLETA de
-costos o de precios sin avisar, que es peor que un error: el usuario creeria que vio todo cuando
-en realidad vio otra cosa.
-
-Casi todas las rutas devuelven el detalle en `{ error: "..." }`, así que podés mostrar ese texto
-directamente. La excepcion son los `500`, esos van con un mensaje genérico y el detalle real se
-queda en el log del servidor.
-
-Si el error es de validación de un esquema, el mensaje incluye el campo concreto que está mal.
+Casi todos los errores vienen como `{ "error": "..." }`. Si es un error de validaciÃ³n, el mensaje nombra el campo que estÃ¡ mal.
 
 ---
 
@@ -787,143 +264,75 @@ Si el error es de validación de un esquema, el mensaje incluye el campo concret
 
 ```
 AgronomoDigital/
-├── backend/
-│   ├── src/
-│   │   ├── app.ts                  ← construye la app Express. NO escucha en ningun puerto
-│   │   ├── server.ts               ← solo arranca y apaga limpio (115 lineas)
-│   │   ├── db.ts                   ← el pool de MySQL
-│   │   ├── logger.ts               ← Pino
-│   │   ├── config/
-│   │   │   └── env.ts              ← valida el .env al arrancar, con Zod
-│   │   ├── auth/
-│   │   │   └── tipos.ts            ← la forma del token, en un solo lugar
-│   │   ├── middleware/
-│   │   │   ├── auth.ts             ← verificar el Bearer y extraer el usuario
-│   │   │   ├── errores.ts          ← manejador central de errores
-│   │   │   └── validar.ts          ← valida body, params y query con Zod
-│   │   ├── routes/
-│   │   │   ├── auth.ts             ← registro y login
-│   │   │   ├── catalogos.ts        ← productos, categorias, canales, GET /
-│   │   │   ├── parcelas.ts         ← CRUD de parcelas
-│   │   │   ├── produccion.ts       ← produccion por producto y ciclo
-│   │   │   ├── costos.ts           ← CRUD de costos
-│   │   │   ├── precios.ts          ← historial de precios
-│   │   │   ├── mercado.ts          ← publicaciones y estados
-│   │   │   └── consultas.ts        ← costo-total, costo-unitario, punto-equilibrio
-│   │   ├── schemas/                ← un archivo de Zod por area
-│   │   ├── services/
-│   │   │   ├── calculos.ts         ← funciones PURAS: reparto, costo, punto de equilibrio
-│   │   │   └── consultas.ts        ← el SQL
-│   │   ├── migraciones/
-│   │   │   └── correr.ts           ← aplica las migraciones pendientes
-│   │   └── types/
-│   │       └── express.d.ts        ← le da tipo a res.locals.usuario
-│   ├── migraciones/
-│   │   ├── 001_renombres.sql       ← precio_venta, produccion_estimada
-│   │   ├── 002_ciclos.sql          ← ciclo en costos y publicaciones
-│   │   └── 003_indices.sql         ← notas + indices de consulta
-│   ├── pruebas/
-│   │   ├── unitarias/              ← 42 pruebas, sin base de datos ni puertos
-│   │   ├── e2e.js                  ← 107 comprobaciones contra la API local
-│   │   └── instalacion.js          ← arma una base desde schema.sql y revisa cascadas
-│   ├── schema.sql                  ← las 9 tablas, con sus llaves foraneas
-│   ├── catalogos.sql               ← los 14 productos, 25 categorias y 4 canales
-│   ├── API_DOCUMENTACION.md        ← referencia de cada endpoint
-│   └── .env.example
+â”œâ”€â”€ backend/
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ app.ts              construye Express, NO escucha en un puerto
+â”‚   â”‚   â”œâ”€â”€ server.ts           arranca y apaga limpio
+â”‚   â”‚   â”œâ”€â”€ db.ts               pool de MySQL
+â”‚   â”‚   â”œâ”€â”€ config/
+â”‚   â”‚   â”‚   â”œâ”€â”€ env.ts          valida el .env al arrancar
+â”‚   â”‚   â”‚   â””â”€â”€ constantes.ts   unidades de superficie y manzana -> ha
+â”‚   â”‚   â”œâ”€â”€ auth/tipos.ts
+â”‚   â”‚   â”œâ”€â”€ middleware/         auth, validar, errores
+â”‚   â”‚   â”œâ”€â”€ routes/
+â”‚   â”‚   â”‚   â”œâ”€â”€ auth.ts
+â”‚   â”‚   â”‚   â”œâ”€â”€ catalogos.ts    productos, canales, insumos, fuentes
+â”‚   â”‚   â”‚   â”œâ”€â”€ parcelas.ts
+â”‚   â”‚   â”‚   â”œâ”€â”€ siembras.ts
+â”‚   â”‚   â”‚   â”œâ”€â”€ estimaciones.ts
+â”‚   â”‚   â”‚   â”œâ”€â”€ precios.ts
+â”‚   â”‚   â”‚   â”œâ”€â”€ mercado.ts
+â”‚   â”‚   â”‚   â””â”€â”€ consultas.ts    disponible para publicar
+â”‚   â”‚   â”œâ”€â”€ schemas/            un archivo de Zod por Ã¡rea
+â”‚   â”‚   â”œâ”€â”€ services/
+â”‚   â”‚   â”‚   â”œâ”€â”€ calculos.ts     redondeo y conversiÃ³n de DECIMAL
+â”‚   â”‚   â”‚   â”œâ”€â”€ consultas.ts    SQL de parcelas y disponibilidad
+â”‚   â”‚   â”‚   â””â”€â”€ estimaciones.ts cÃ¡lculo y guardado de estimaciones
+â”‚   â”‚   â”œâ”€â”€ migraciones/correr.ts
+â”‚   â”‚   â””â”€â”€ types/express.d.ts
+â”‚   â”œâ”€â”€ migraciones/            001 a 005
+â”‚   â”œâ”€â”€ pruebas/
+â”‚   â”‚   â”œâ”€â”€ unitarias/
+â”‚   â”‚   â”œâ”€â”€ e2e.js
+â”‚   â”‚   â””â”€â”€ instalacion.js
+â”‚   â”œâ”€â”€ schema.sql              esquema base (se completa con migraciones)
+â”‚   â”œâ”€â”€ catalogos.sql           productos y canales
+â”‚   â”œâ”€â”€ catalogos_insumos.sql   categorÃ­as, insumos, precios y recetas de ejemplo
+â”‚   â”œâ”€â”€ API_DOCUMENTACION.md
+â”‚   â””â”€â”€ .env.example
 ```
 
-Este repositorio es **solo el backend**. La interfaz vive en otro proyecto aparte y no se versiona
-aquí.
+El repositorio es solo el backend. La interfaz vive en otro proyecto.
 
-### Por qué `app.ts` está separado de `server.ts`
+Si buscÃ¡s la forma de un body, params o query, mirÃ¡ `src/schemas/`. Si buscÃ¡s una regla de negocio, mirÃ¡ `src/services/`. Si buscÃ¡s por quÃ© se hizo algo, estÃ¡ en el comentario de arriba del archivo.
 
-Antes toda la app estaba en `server.ts`, que además era el punto de entrada. Para testear algo
-había que importarlo, y al importarlo arrancaba el servidor y se quedaba escuchando en un puerto.
-Las pruebas unitarias no podian correr sin pelearse con el puerto 3002.
+`app.ts` estÃ¡ separado de `server.ts` para poder importar la app en las pruebas sin abrir un puerto. Por eso `npm run test:unit` corre en menos de un segundo.
 
-Ahora `app.ts` construye la app y la **exporta sin escuchar en ningun puerto**, y `server.ts` solo
-la monta y maneja el apagado limpio. Por eso `npm run test:unit` corre en milisegundos.
+### Migraciones
 
-### Dónde está cada cosa
+Los `.sql` de `migraciones/` van en orden numÃ©rico y se aplican con `npm run migrate`. Cada archivo cuenta por quÃ© existe, no solo quÃ© hace. No hay rollback automÃ¡tico: MySQL no puede deshacer un `ALTER TABLE` a medias, asÃ­ que para volver atrÃ¡s hay que escribir el SQL a mano.
 
-- **Una ruta** -> `src/routes/`
-- **La forma de un body, params o query** -> `src/schemas/`
-- **Un cálculo de negocio** -> `src/services/calculos.ts` (si no toca MySQL) o `src/services/consultas.ts` (si hace SQL)
-- **Un código de error** -> `src/middleware/errores.ts`
-- **El porqué de una decisión** -> está en el comentario de arriba del archivo
+`schema.sql` es solo la base. Las migraciones agregan `usuario`, `unidad_superficie`, `siembras`, las tablas de insumos y las estimaciones. Instalar sin correrlas deja la API rota.
 
-El modelo de datos completo está en `backend/API_DOCUMENTACION.md`. Lo mínimo para trabajar es saber
-esto:
-
-- Un usuario tiene parcelas. Las parcelas son suyas y nadie más las ve.
-- Cada parcela tiene costos. Cada costo puede estar asociado a un producto o ser general.
-- Cada parcela puede registrar producción por producto y ciclo, en la unidad de cada producto.
-- Los productos tienen un tipo, y cada tipo tiene sus propias categorías de gasto.
-- El historial de precios es global. El precio del arroz le sirve a todos por igual.
-- Las publicaciones son publicas y las maneja el mercado.
-
-### Las migraciones
-
-Los archivos `.sql` de `migraciones/` van en orden numérico y se aplican con `npm run migrate`.
-
-Cada uno lleva arriba un comentario explicando **por que** existe, no que hace. Por ejemplo, por que
-`002_ciclos.sql` pone `'actual'` a los costos que ya estaban en la base: porque la migración no
-puede saber a que temporada pertenecia cada costo, y `'actual'` es lo único que no inventa
-información.
-
-No hay rollback automático. MySQL no puede deshacer un `ALTER TABLE` a medias, así que un rollback
-automático dejaria columnas mal renombradas sin avisar. Para volver atras hay que escribir el SQL a
-mano.
-
-### Las pruebas
+### Pruebas
 
 ```bash
 cd backend
-
-npm run test:unit           # 42 pruebas. No tocan MySQL ni abren puertos. ~1 s
-npm test                    # e2e.js: registro, calculos, mercado, permisos, cascadas
-npm run test:instalacion   # crea una base temporal desde schema.sql y la valida
-npm run typecheck           # TypeScript sin emitir archivos
+npm run test:unit         # sin base ni puertos
+npm run typecheck
+npm run test:instalacion  # arma una base temporal, la revisa y la borra
+npm test                  # E2E contra la API en el puerto 3002
 ```
 
-`npm test` y `npm run test:instalacion` necesitan la API corriendo en otra terminal (`npm run dev`),
-salvo el de instalación, que arma su propia base.
-
-`npm run test:unit` es el que conviene correr siempre: no necesita MySQL, no abre puertos y corre en
-milisegundos. Es donde viven las reglas de negocio.
-
-`npm test` registra dos usuarios con correos únicos y los borra al terminar. Las aserciones de
-conteo son relativas al estado de partida, así que convive con datos que ya esten.
-
-`npm run test:instalacion` crea una base llamada `agronodigital_instalacion_prueba`, la llena desde
-los `.sql`, revisa que existan las 9 tablas con sus cascadas, y la borra. No toca
-`agronomodigital`.
+`npm test` necesita la API corriendo en otra terminal. Registra dos usuarios con correos Ãºnicos y los borra al terminar, asÃ­ que convive con los datos que ya haya.
 
 ---
 
-## Lo que falta
+## Lo que queda pendiente
 
-- **Las dos decisiones abiertas.** Hay dos cosas que quedaron a medio camino y conviene resolver
-  antes de tocar el frontend:
-  - `publicaciones.id_parcela` es obligatorio en el esquema, y así quedo en la API. Si el caso
-    "una oferta junta varias parcelas" te importa de verdad, hay que cambiar el esquema, porque hoy
-    la regla de "no publicar más de lo producido" no tiene con que comparar.
-  - La migración `002` les puso `'actual'` a todos los costos que ya estaban en la base. Agrupa los
-    datos viejos juntos, pero **mezcla anios distintos**. Si me pasas los ciclos reales, lo ajusto.
-- **El frontend todavia usa los nombres viejos.** `precio_venta_quintal`, `produccion_quintales`,
-  `costo_quintal` y la ruta `/costo-quintal`. El backend los sostiene, pero hay que migrarlos.
-- **`CORS_ORIGENES` está vacío**, así que la API acepta peticiones de cualquier origen. Es lo que
-  hace falta para trabajar con el frontend abierto como archivo, pero es un agujero si el backend
-  se publica. Hay que poner los dominios reales antes de desplegar.
-- **`DELETE /precios/:id` deja borrar precios de otros.** Es una decisión consciente (el precio es
-  un dato de referencia público) pero si hay que restringuirlo, se agrega `id_usuario` a
-  `historial_precios`.
-- **La API de precios es global y cualquiera autenticado escribe.** Si el negocio necesita que cada
-  usuario registre sus propios precios, hay que agregar `id_usuario` también ahí.
-- El registro de la contraseña pide 8 caracteres sin más. Se puede agregar exigir mayúscula, número
-  y símbolo.
-- No hay endpoint para borrar la cuenta. Si se necesita, se agrega del lado del servidor.
-- No hay tests de integración con la base real. Hay unitarios de cálculo y e2e, pero falta una capa
-  que pruebe el SQL contra MySQL (que es donde suelen estar los errores de orden de parámetros).
-- No hay OpenAPI generado. `API_DOCUMENTACION.md` está escrito a mano y hay que acordarse de
-  actualizarlo cuando cambie una ruta.
+- **Fuente oficial de precios y dosis.** Se cargo la Guia de Precios de Insumos Agropecuarios 2023 del MAG (El Salvador) con `ingesta/ingerir_precios_mag.py`. Quedan como ejemplo las dosis (`requerimientos_cultivo.es_ejemplo = 1`) y los insumos sin coincidencia en la guia (semillas por kg, riego, mano de obra, maquinaria). El script es idempotente: se vuelve a correr cuando se publique una guia nueva.
+- **Dosis por cultivo.** Las recetas actuales son ilustrativas. Si el agrÃ³nomo tiene las dosis reales, se cargan en `requerimientos_cultivo`.
+- **Equivalencia de la manzana.** Se usa `0.6989 ha` (El Salvador). Si el proyecto se usa en otro paÃ­s, cambiar `HECTAREAS_POR_MANZANA` en el `.env`.
+- **`CORS_ORIGENES` estÃ¡ vacÃ­o**, asÃ­ que cualquier pÃ¡gina puede llamar a la API. EstÃ¡ bien para trabajar en local con el frontend abierto como archivo, pero hay que poner los dominios reales antes de publicar.
+- **Los precios de venta son globales** y cualquier usuario autenticado puede borrarlos. Es una decisiÃ³n consciente, pero si hay que restringirlo se agrega `id_usuario` a `historial_precios`.
+- **No hay endpoint para borrar la cuenta.** Si se necesita, se agrega del lado del servidor.

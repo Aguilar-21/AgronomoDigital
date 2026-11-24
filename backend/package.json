@@ -1,7 +1,7 @@
 {
   "name": "agronodigital",
   "version": "1.0.0",
-  "description": "API de costos agriculturales por parcela",
+  "description": "API de estimacion de costos de insumos agricolas",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

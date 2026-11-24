@@ -1,18 +1,4 @@
-// schemas/precios.ts
-//
-// POST y GET de /precios.
-//
-// QUE CAMBIA
-//
-// La columna se renombro de precio_venta_quintal a precio_venta. El nombre viejo
-// era una mentira: el sistema tiene 14 productos en 6 unidades (quintal, caja,
-// jaba, ciento, libra, botella) y el valor siempre fue el precio de LA UNIDAD
-// del producto. Un tomate en caja costaba lo que costaba la caja, y el nombre
-// decia quintal.
-//
-// Esto es un cambio incompatible para el cliente: hay que actualizar el
-// frontend. Por eso el campo viejo sigue saliendo en la respuesta como alias y
-// el esquema acepta el nombre viejo en el POST durante la transicion.
+// Alta de precios de venta.
 
 import { z } from 'zod';
 import { fechaISO, idCanalOpcional, idProductoOpcional, montoPositivo } from './comunes';
@@ -59,7 +45,6 @@ export const crearPrecioSchema = z
         precio_venta: montoPositivo.optional(),
 
         // Solo para la transicion. Se borra en cuanto el frontend este
-        // actualizado; ver POST /precios, que responde con aviso_deprecado.
         precio_venta_quintal: montoPositivo.optional()
     })
     .refine((d) => d.precio_venta !== undefined || d.precio_venta_quintal !== undefined, {

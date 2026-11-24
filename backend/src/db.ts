@@ -1,15 +1,4 @@
-// db.ts - conexion a MySQL.
-//
-// QUE CAMBIA
-//
-// Las variables dejan de leerse sueltas de process.env y salen de config/env.ts,
-// que ya las valido con zod al arrancar. Antes, si DB_HOST faltaba, el pool se
-// creaba igual con host undefined y el error aparecia en la primera consulta,
-// mucho despues del arranque y sin decir que faltaba.
-//
-// Todo el acceso a la base pasa por el pool que se exporta aca. No hay que abrir
-// conexiones sueltas en cada ruta: el pool las administra y las reutiliza, que es
-// lo que hace que la API no se caiga cuando llegan varias peticiones juntas.
+// El pool de MySQL. Las variables ya se validaron en config/env.ts.
 
 import mysql from 'mysql2/promise'; // mysql2 en su version con promesas
 import { env } from './config/env';
@@ -53,17 +42,10 @@ const pool = mysql.createPool({
     keepAliveInitialDelay: 10_000,
 
     // Con charset explicito se evita el "Unknown initial character set" que
-    // aparece cuando el servidor y el cliente no coinciden.
     charset: 'utf8mb4'
 });
 
-// namedPlaceholders:false queda como default a proposito. Los "?" se pasan como
-// arrays [valor, valor] en el orden en que aparecen, que es lo que espera
-// mysql2 por defecto.
-//
-// queueLimit y connectionLimit no son obligatorios: si no se ponen, mysql2
-// aplica connectionLimit=10 y waitForConnections=false. estan escritos
-// explicitamente para que quede claro cual es el comportamiento buscado.
+// namedPlaceholders:false queda como default a proposito. Los "?" se pasan com...
 
 /**
  * Comprueba que la base responde.

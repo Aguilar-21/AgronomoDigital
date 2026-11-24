@@ -1,13 +1,7 @@
-// schemas/comunes.ts
-//
-// Piezas de validacion que se repiten en casi todos los endpoints.
-//
-// Centralizarlas tiene una razon concreta: si el id de parcela se valida en 9
-// sitios y en uno de ellos faltaba el .int().positive(), ese endpoint aceptaba
-// 1.5 y "abc" y fallaba con un 500 de MySQL. Con el esquema unico, el forget
-// se puede hacer una vez, no nueve.
+// Validaciones que se repiten en varios endpoints.
 
 import { z } from 'zod';
+import { UNIDADES_SUPERFICIE } from '../config/constantes';
 
 /**
  * Id de path (/parcelas/:id).
@@ -81,16 +75,8 @@ export const texto = (min: number, max: number) =>
         .max(max, `No puede pasar de ${max} caracteres`);
 
 /**
- * Correo Electronico, ya normalizado.
- *
- * La normalizacion va DENTRO del esquema, y no en un .toLowerCase() suelto por
- * la ruta, para que ningun endpoint se olvide. trim quita espacios que se
- * cuelan al copiar y pegar, toLowerCase evita que "Jose@Mail.com" y
- * "jose@mail.com" creen dos cuentas.
- *
- * La razon de fondo: el UNIQUE de usuarios.correo es lo unico que impide dos
- * cuentas con el mismo correo. Si se guardan sin normalizar, el indice deja de
- * detectar el duplicado y el usuario termina con dos cuentas.
+ * Correo normalizado dentro del esquema (trim y minúsculas) para que nadie
+ * pueda crear dos cuentas con la misma dirección escrita distinto.
  */
 export const correo = z
     .string({ message: 'El correo es obligatorio' })
@@ -99,6 +85,27 @@ export const correo = z
     .min(5, 'El correo es muy corto')
     .max(150, 'El correo es muy largo')
     .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'El correo no tiene un formato valido');
+
+/**
+ * Usuario normalizado igual que el correo. No se permite @ para que no se
+ * pueda confundir con una dirección de correo en el login.
+ */
+export const usuario = z
+    .string({ message: 'El usuario es obligatorio' })
+    .trim()
+    .toLowerCase()
+    .min(3, 'El usuario debe tener al menos 3 caracteres')
+    .max(30, 'El usuario no puede pasar de 30 caracteres')
+    .regex(
+        /^[a-z][a-z0-9._-]*$/,
+        'El usuario debe empezar con una letra y solo puede tener letras, numeros, punto, guion y guion bajo'
+    );
+
+/** El mismo usuario, pero opcional: el login puede venir por correo. */
+export const usuarioOpcional = usuario.optional();
+
+/** Correo opcional, para el login por correo. */
+export const correoOpcional = correo.optional();
 
 /** Contrasena: minimo 8. El maximo acota el costo de bcrypt con entradas raras. */
 export const contrasena = z
@@ -111,3 +118,19 @@ export const idProductoOpcional = z.coerce.number().int().positive().optional();
 
 /** id_canal dentro del cuerpo, opcional. */
 export const idCanalOpcional = z.coerce.number().int().positive().optional();
+
+/**
+ * Unidad en la que se expresa una superficie.
+ *
+ * Se guarda junto al numero porque 5 no dice nada por si solo: pueden ser 5
+ * hectareas o 5 manzanas, y la diferencia es de casi 43%.
+ */
+export const unidadSuperficie = z.enum(UNIDADES_SUPERFICIE, {
+    message: 'La unidad de superficie debe ser hectarea o manzana'
+});
+
+/** Superficie mayor que cero, con un techo para evitar valores absurdos. */
+export const superficie = z.coerce
+    .number({ message: 'La superficie debe ser un numero' })
+    .positive('La superficie debe ser mayor que cero')
+    .max(1_000_000, 'La superficie es demasiado grande');
