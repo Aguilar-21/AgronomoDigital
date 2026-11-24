@@ -1,15 +1,10 @@
-// Aplico los .sql que falten, en orden.
-
-import { readdirSync, readFileSync } from 'node:fs';
+﻿import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RowDataPacket } from 'mysql2';
-import pool from '../db';
+import db from '../db';
 import { logger } from '../logger';
 
-// Los .sql viven en migraciones/, que esta FUERA de src/ y por lo tanto fuera...
 const directorioMigraciones = join(__dirname, '..', '..', 'migraciones');
 
-/** Ordena los nombres de los archivos de forma natural: 2 antes que 10. */
 function ordenNatural(a: string, b: string): number {
     const na = Number(a.match(/\d+/)?.[0] ?? 0);
     const nb = Number(b.match(/\d+/)?.[0] ?? 0);
@@ -20,23 +15,34 @@ function ordenNatural(a: string, b: string): number {
 export async function correrMigraciones(
     directorio = directorioMigraciones
 ): Promise<string[]> {
-    // Tabla de control. Se crea antes de nada para que el propio registro de lo
-    await pool.query(
+    db.exec(
         'CREATE TABLE IF NOT EXISTS migraciones_aplicadas (' +
-            'nombre varchar(255) NOT NULL, ' +
-            'aplicada_en timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, ' +
-            'PRIMARY KEY (nombre)' +
-            ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+            'nombre TEXT NOT NULL PRIMARY KEY, ' +
+            'aplicada_en TEXT NOT NULL DEFAULT (datetime(\'now\'))' +
+            ')'
     );
+
+    // Si el esquema ya esta en su version final (tabla estimaciones existe),
+    // las migraciones ya estan aplicadas: solo las registramos.
+    const existeFinal = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='estimaciones'"
+    ).get();
 
     const archivos = readdirSync(directorio)
         .filter((f) => f.endsWith('.sql'))
         .sort(ordenNatural);
 
-    const [hechas] = await pool.query<RowDataPacket[]>(
-        'SELECT nombre FROM migraciones_aplicadas'
-    );
+    if (existeFinal) {
+        const stmt = db.prepare('INSERT OR IGNORE INTO migraciones_aplicadas (nombre) VALUES (?)');
+        for (const a of archivos) {
+            stmt.run(a);
+        }
+        logger.info({ total: archivos.length }, 'esquema ya en version final, migraciones registradas');
+        return [];
+    }
 
+    // Esquema viejo: aplicar migraciones pendientes.
+    const hechas = db.prepare('SELECT nombre FROM migraciones_aplicadas').all() as { nombre: string }[];
     const yaAplicadas = new Set(hechas.map((f) => String(f.nombre)));
 
     const aplicadas: string[] = [];
@@ -49,7 +55,6 @@ export async function correrMigraciones(
 
         const sql = readFileSync(join(directorio, archivo), 'utf8');
 
-        // Cada sentencia por separado. El archivo entero como una sola llamada
         const sqlSinComentarios = sql
             .split('\n')
             .filter((linea) => !linea.trim().startsWith('--'))
@@ -61,19 +66,19 @@ export async function correrMigraciones(
             .filter((s) => s.length > 0);
 
         try {
+            db.exec('BEGIN');
             for (const sentencia of sentencias) {
-                await pool.query(sentencia);
+                db.exec(sentencia);
             }
+            db.prepare('INSERT INTO migraciones_aplicadas (nombre) VALUES (?)').run(archivo);
+            db.exec('COMMIT');
         } catch (error) {
+            db.exec('ROLLBACK');
             logger.error({ err: error, archivo }, 'la migracion fallo');
             throw new Error(
-                `Fallo la migracion ${archivo}. Las anteriores de este archivo pueden ` +
-                    `haber quedado aplicadas: MySQL no tiene rollback de DDL. ` +
-                    `Revisa el estado antes de volver a correr.`
+                `Fallo la migracion ${archivo}. Revisa el estado antes de volver a correr.`
             );
         }
-
-        await pool.query('INSERT INTO migraciones_aplicadas (nombre) VALUES (?)', [archivo]);
 
         aplicadas.push(archivo);
         logger.info({ archivo }, 'migracion aplicada');
@@ -82,17 +87,14 @@ export async function correrMigraciones(
     return aplicadas;
 }
 
-// Solo se ejecuta cuando este archivo es el punto de entrada, no cuando otra
 if (process.argv[1] && process.argv[1].endsWith('correr.ts')) {
     correrMigraciones()
         .then((aplicadas) => {
             logger.info({ total: aplicadas.length }, 'migraciones terminadas');
-            return pool.end();
+            process.exit(0);
         })
-        .then(() => process.exit(0))
         .catch(async (error) => {
             logger.error({ err: error }, 'no se pudieron correr las migraciones');
-            await pool.end();
             process.exit(1);
         });
 }

@@ -1,4 +1,4 @@
-// GET y POST de /parcelas/:id/siembras.
+﻿// GET y POST de /parcelas/:id/siembras.
 
 import { z } from 'zod';
 import { idProductoOpcional, superficie, unidadSuperficie } from './comunes';

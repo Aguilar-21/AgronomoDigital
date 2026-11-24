@@ -1,15 +1,7 @@
-# -*- coding: utf-8 -*-
-"""Ingresa precios reales desde la Guia MAG 2023 al catalogo de insumos.
+﻿# -*- coding: utf-8 -*-
+"""Ingresa precios reales desde la Guia MAG 2023 al catalogo de insumos (SQLite)."""
 
-Uso (desde la raiz del repo):
-    python ingesta/ingerir_precios_mag.py
-
-Salida:
-  - backend/precios_mag_2023.sql (idempotente por fuente)
-  - carga directa en la base (fuente id=2, es_ejemplo=0)
-"""
-
-import re, sys, os, subprocess, urllib.request
+import re, sys, os, sqlite3, urllib.request
 from pathlib import Path
 import pymupdf
 
@@ -78,7 +70,7 @@ def descargar_pdf():
         urllib.request.urlretrieve(URL, PDF)
         print("Descargado:", PDF)
     except Exception as e:
-        print("No se pudo descargar automaticamente (el sitio del MAG bloquea descargas automaticas).")
+        print("No se pudo descargar automaticamente.")
         print("Descargalo manualmente desde:")
         print("  " + URL)
         print("y guardalo en:")
@@ -105,7 +97,7 @@ def main():
                     continue
                 pres = None
                 for c in cells:
-                    if re.search(r'(Litro|Kg|Gal[oÃ³]n|cc|Gramo|Libra|Saco|Quintal|ml|Bolsa)', c, re.I) and len(c) < 60:
+                    if re.search(r'(Litro|Kg|Gal[oÃ³n]n|cc|Gramo|Libra|Saco|Quintal|ml|Bolsa)', c, re.I) and len(c) < 60:
                         pres = c
                         break
                 if pres is None:
@@ -144,19 +136,15 @@ def main():
         print("  insumo %d: %d filas" % (k, v))
 
     lineas = []
-    lineas.append("-- precios_mag_2023.sql")
-    lineas.append("-- Precios reales extraidos de la Guia MAG 2023 (insumos agropecuarios).")
+    lineas.append("-- precios_mag_2023.sql (SQLite)")
+    lineas.append("-- Precios reales extraidos de la Guia MAG 2023.")
     lineas.append("-- Fuente: " + URL)
-    lineas.append("-- Generado automaticamente por backend/scripts/ingerir_precios_mag.py")
     lineas.append("")
-    lineas.append("INSERT INTO fuentes_precio")
+    lineas.append("INSERT OR REPLACE INTO fuentes_precio")
     lineas.append("  (id_fuente, institucion, titulo, fecha_publicacion, url, hash_sha256, es_ejemplo, notas)")
     lineas.append("VALUES")
     lineas.append("  (2, 'Ministerio de Agricultura y Ganaderia (MAG)', 'Guia de Precios de Insumos Agropecuarios 2023',")
-    lineas.append("   '2023-07-31', '" + URL + "', NULL, 0, 'Precios actualizados al 31/07/2023, IVA incluido. Cargados por ingesta automatica.')")
-    lineas.append("ON DUPLICATE KEY UPDATE institucion = VALUES(institucion), titulo = VALUES(titulo),")
-    lineas.append("  fecha_publicacion = VALUES(fecha_publicacion), url = VALUES(url), es_ejemplo = VALUES(es_ejemplo),")
-    lineas.append("  notas = VALUES(notas);")
+    lineas.append("   '2023-07-31', '" + URL + "', NULL, 0, 'Precios actualizados al 31/07/2023, IVA incluido. Cargados por ingesta automatica.');")
     lineas.append("")
     lineas.append("-- Limpiar precios anteriores de esta fuente (idempotente)")
     lineas.append("DELETE FROM precios_insumos WHERE id_fuente = 2;")
@@ -173,23 +161,27 @@ def main():
     for id_ins in sorted(mejor):
         f = mejor[id_ins]
         alias = f[1].strip().replace("'", "''")[:80]
-        lineas.append("INSERT INTO alias_insumos (id_insumo, alias) VALUES (%d, '%s') ON DUPLICATE KEY UPDATE id_insumo = VALUES(id_insumo);" % (id_ins, alias))
+        lineas.append("INSERT OR REPLACE INTO alias_insumos (id_insumo, alias) VALUES (%d, '%s');" % (id_ins, alias))
     SQL_OUT.write_text("\n".join(lineas), encoding="utf-8")
     print("\nSQL generado:", SQL_OUT)
 
+    # --- cargar en la BD (SQLite) ---
     cfg = {}
     for line in (REPO / ".env").read_text(encoding="utf-8", errors="ignore").splitlines():
         t = line.strip()
         if t and not t.startswith("#") and "=" in t:
             k, v = t.split("=", 1)
             cfg[k.strip()] = v.strip().strip('"').strip("'")
-    ENV = dict(os.environ); ENV["MYSQL_PWD"] = cfg.get("DB_PASSWORD", "")
-    MYSQL = r"C:\Program Files\MySQL\MySQL Server 9.6\bin\mysql.exe"
-    DB = cfg["DB_DATABASE"]
-    rc = subprocess.run([MYSQL, "-h", cfg["DB_HOST"], "-u", cfg["DB_USER"], DB],
-                        input=SQL_OUT.read_text(encoding="utf-8"),
-                        capture_output=True, text=True, encoding="utf-8", errors="replace", env=ENV)
-    print("Carga en BD:", "OK" if rc.returncode == 0 else "FALLO " + rc.stderr[:500])
+    DB_PATH = cfg.get("DB_PATH", "./data/agronomodigital.db")
+    if not os.path.isabs(DB_PATH):
+        DB_PATH = str(REPO / DB_PATH)
+    print("BD:", DB_PATH)
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.executescript(SQL_OUT.read_text(encoding="utf-8"))
+    conn.commit()
+    conn.close()
+    print("Carga en BD: OK")
 
 if __name__ == "__main__":
     main()

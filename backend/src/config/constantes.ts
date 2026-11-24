@@ -1,4 +1,4 @@
-// Constantes de conversion entre unidades de superficie.
+﻿// Constantes de conversion entre unidades de superficie.
 const desdeEntorno = Number(process.env.HECTAREAS_POR_MANZANA);
 
 export const HECTAREAS_POR_MANZANA =

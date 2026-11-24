@@ -1,4 +1,4 @@
--- 005_estimacion_insumos.sql
+﻿-- 005_estimacion_insumos.sql
 --
 -- Cambia el modelo de costos declarados por el de estimacion de insumos.
 -- parcelas guarda la unidad de su tamano, produccion_parcelas pasa a ser

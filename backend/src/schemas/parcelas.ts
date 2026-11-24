@@ -1,4 +1,4 @@
-// Alta y edicion de parcelas.
+﻿// Alta y edicion de parcelas.
 
 import { z } from 'zod';
 import { superficie, texto, unidadSuperficie } from './comunes';

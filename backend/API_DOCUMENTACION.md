@@ -5,7 +5,7 @@ API REST del sistema de estimación de costos de insumos agrícolas.
 - **Base URL:** `http://localhost:3002`
 - **Formato:** JSON
 - **Autenticación:** JWT en la cabecera `Authorization: Bearer <token>`
-- **Base de datos:** MySQL, base `agronomodigital`
+- **Base de datos:** SQLite, archivo `agronomodigital.db`
 
 ---
 
@@ -545,17 +545,26 @@ Formato de error:
 
 ---
 
-## Instalar la base de datos
+## Instalar la base de datos (SQLite)
+
+No hay servidor que instalar. La base es un archivo (`agronomodigital.db`) que se crea al arrancar.
 
 ```bash
-mysql -u root -e "CREATE DATABASE agronomodigital CHARACTER SET utf8mb4"
-mysql -u root agronomodigital < schema.sql
-mysql -u root agronomodigital < catalogos.sql
+cd backend
+npm install
+cp .env.example .env
+# Editar .env: DB_PATH=./data/agronomodigital.db
 npm run migrate
-mysql -u root agronomodigital < catalogos_insumos.sql
 ```
 
-`schema.sql` es el esquema base. Las migraciones son obligatorias: agregan `usuario`, `unidad_superficie`, `siembras`, las tablas de insumos y las estimaciones. `catalogos_insumos.sql` carga categorías, insumos, precios y recetas de ejemplo.
+Para cargar los catalogos de ejemplo, ejecutar los scripts SQL con sqlite3 o el ingester:
+
+```bash
+# Los archivos .sql son compatibles con SQLite.
+# schema.sql ya contiene el esquema final (16 tablas).
+```
+
+`schema.sql` ya contiene el esquema final. `catalogos.sql` carga productos y canales. `catalogos_insumos.sql` carga categorias, insumos, precios y recetas de ejemplo. `precios_mag_2023.sql` carga precios reales del MAG.
 
 La conversión de manzanas a hectáreas usa `0.6989 ha` por manzana (El Salvador). Se puede cambiar con `HECTAREAS_POR_MANZANA` en el `.env` sin tocar el código.
 

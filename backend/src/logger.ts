@@ -1,4 +1,4 @@
-// Un solo logger para toda la app.
+﻿// Un solo logger para toda la app.
 
 import pino from 'pino';
 import { env } from './config/env';

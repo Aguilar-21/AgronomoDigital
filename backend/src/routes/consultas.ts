@@ -1,4 +1,4 @@
-// Solo GET /parcelas/:id/disponible, para saber cuanto queda sin publicar.
+﻿// Solo GET /parcelas/:id/disponible, para saber cuanto queda sin publicar.
 
 import { Router } from 'express';
 import { validar } from '../middleware/validar';

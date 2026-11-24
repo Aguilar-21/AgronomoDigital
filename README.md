@@ -17,10 +17,7 @@ npm run dev
 AbrÃ­ `.env` y ponÃ© tus datos de MySQL:
 
 ```env
-DB_HOST=localhost
-DB_USER=root
-DB_PASSWORD=tu_clave
-DB_DATABASE=agronomodigital
+DB_PATH=./data/agronomodigital.db
 JWT_SECRETO=cualquier_cosa_larga_y_aleatoria_de_16_caracteres_o_mas
 PUERTO=3002
 NODE_ENV=development
@@ -28,9 +25,9 @@ LOG_LEVEL=debug
 CORS_ORIGENES=
 ```
 
-Si la base es nueva, primero hay que crearla con `schema.sql` y `catalogos.sql`, despuÃ©s correr las migraciones y despuÃ©s cargar `catalogos_insumos.sql`. El orden estÃ¡ en `backend/API_DOCUMENTACION.md`, al final.
+La base de datos es SQLite y se crea sola al arrancar. Para cargar catalogos: schema.sql, catalogos.sql, catalogos_insumos.sql y precios_mag_2023.sql. Ver backend/API_DOCUMENTACION.md.
 
-`JWT_SECRETO` tiene que tener 16 caracteres o mÃ¡s. Si falta o estÃ¡ corto, el servidor no arranca y dice quÃ©_variable revisar. Lo mismo pasa con las variables de MySQL: se validan todas al arrancar, no cuando falla la primera consulta.
+`JWT_SECRETO` tiene que tener 16 caracteres o mÃ¡s. Si falta o estÃ¡ corto, el servidor no arranca y dice quÃ©_variable revisar. Lo mismo pasa con DB_PATH: se valida al arrancar.
 
 `HECTAREAS_POR_MANZANA` es opcional. Por defecto vale `0.6989`, que es la manzana salvadorena. Si en otro paÃ­s usan otra equivalencia, se cambia en el `.env` sin tocar el cÃ³digo.
 
@@ -40,7 +37,7 @@ Si la base es nueva, primero hay que crearla con `schema.sql` y `catalogos.sql`,
 
 ### Los decimales llegan como texto
 
-MySQL devuelve los `DECIMAL` como string. `tamano`, `superficie`, `produccion`, `cantidad`, `precio_unitario`, `subtotal` y `total_estimado` pueden venir como `"3.00"`. Sumarlos sin convertir concatena: `"10" + "5"` da `"105"`.
+SQLite (better-sqlite3) devuelve los REAL como number de JavaScript, asi que no hace falta convertir. Los valores se redondean igual con num() y redondear2() por consistencia.
 
 ```js
 const total = Number(est.total_estimado) + Number(otro.total_estimado);
@@ -310,7 +307,7 @@ Si buscÃ¡s la forma de un body, params o query, mirÃ¡ `src/schemas/`. Si bus
 
 ### Migraciones
 
-Los `.sql` de `migraciones/` van en orden numÃ©rico y se aplican con `npm run migrate`. Cada archivo cuenta por quÃ© existe, no solo quÃ© hace. No hay rollback automÃ¡tico: MySQL no puede deshacer un `ALTER TABLE` a medias, asÃ­ que para volver atrÃ¡s hay que escribir el SQL a mano.
+La base de datos es SQLite: un solo archivo (agronomodigital.db). No hay servidor que instalar. schema.sql ya contiene el esquema final (16 tablas), asi que npm run migrate solo registra las migraciones como aplicadas. Para desarrollo local o despliegue en Vercel (con el archivo en /tmp), basta con arrancar el servidor.
 
 `schema.sql` es solo la base. Las migraciones agregan `usuario`, `unidad_superficie`, `siembras`, las tablas de insumos y las estimaciones. Instalar sin correrlas deja la API rota.
 

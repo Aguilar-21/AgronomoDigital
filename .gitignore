@@ -17,5 +17,9 @@ err.txt
 .DS_Store
 Thumbs.db
 
-# Datos descargados (documentos fuente, no se versionan)
+# Datos descargados y base de datos local (no se versionan)
 backend/datos/
+backend/data/
+*.db
+*.db-wal
+*.db-shm

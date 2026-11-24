@@ -1,4 +1,4 @@
-// La forma del usuario que viene en el token.
+﻿// La forma del usuario que viene en el token.
 
 export interface UsuarioAutenticado {
     id: number;

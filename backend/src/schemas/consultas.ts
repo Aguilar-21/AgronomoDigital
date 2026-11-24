@@ -1,4 +1,4 @@
-// Filtros de la consulta de disponible.
+﻿// Filtros de la consulta de disponible.
 
 import { z } from 'zod';
 import { idProductoOpcional } from './comunes';

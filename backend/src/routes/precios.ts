@@ -1,8 +1,5 @@
-// Historial de precios de venta.
-
-import { Router } from 'express';
-import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import pool from '../db';
+﻿import { Router } from 'express';
+import db from '../db';
 import { validar } from '../middleware/validar';
 import { protegerRuta } from '../middleware/auth';
 import { ErrorHttp } from '../middleware/errores';
@@ -14,11 +11,7 @@ import { num } from '../services/calculos';
 
 const router = Router();
 
-/**
- * GET /precios, paginado. Devuelve { precios, total, limit, offset }.
- * Cada fila trae precio_venta y, por ahora, el alias precio_venta_quintal.
- */
-router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shape), 'query'), async (req, res) => {
+router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shape), 'query'), (req, res) => {
     const usuario = usuarioActual(res);
     void usuario;
 
@@ -30,7 +23,7 @@ router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shap
     };
 
     const cond: string[] = ['1 = 1'];
-    const params: unknown[] = [];
+    const params: (string | number)[] = [];
 
     if (q.id_producto !== undefined) {
         cond.push('id_producto = ?');
@@ -43,14 +36,13 @@ router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shap
 
     const where = cond.join(' AND ');
 
-    const [conteo] = await pool.query<RowDataPacket[]>(
-        'SELECT COUNT(*) AS total FROM historial_precios WHERE ' + where,
-        params
-    );
+    const conteo = db.prepare(
+        'SELECT COUNT(*) AS total FROM historial_precios WHERE ' + where
+    ).get(...params) as { total: number };
 
-    const total = Number(conteo[0]?.total ?? 0);
+    const total = Number(conteo?.total ?? 0);
 
-    const [filas] = await pool.query<RowDataPacket[]>(
+    const filas = db.prepare(
         'SELECT h.id_precio, h.id_producto, h.precio_venta, ' +
             'h.precio_venta AS precio_venta_quintal, ' +
             'h.id_canal, h.fecha, ' +
@@ -60,9 +52,8 @@ router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shap
             'LEFT JOIN canales_venta ca ON ca.id_canal = h.id_canal ' +
             'WHERE ' + where +
             ' ORDER BY h.fecha DESC, h.id_precio DESC' +
-            ' LIMIT ? OFFSET ?',
-        [...params, q.limit, q.offset]
-    );
+            ' LIMIT ? OFFSET ?'
+    ).all(...params, q.limit, q.offset);
 
     res.json({
         precios: filas,
@@ -75,10 +66,6 @@ router.get('/precios', protegerRuta, validar(queryPrecios.extend(paginacion.shap
     });
 });
 
-/**
- * POST /precios. Acepta precio_venta y, mientras tanto, precio_venta_quintal
- * con un aviso. No es pública: muestra márgenes del negocio.
- */
 router.post('/precios', protegerRuta, validar(crearPrecioSchema), async (req, res) => {
     const cuerpo = req.body as {
         id_producto: number | null;
@@ -102,15 +89,14 @@ router.post('/precios', protegerRuta, validar(crearPrecioSchema), async (req, re
         }
     }
 
-    const [creado] = await pool.query<ResultSetHeader>(
+    const result = db.prepare(
         'INSERT INTO historial_precios (id_producto, id_canal, precio_venta, fecha) ' +
-            'VALUES (?, ?, ?, ?)',
-        [cuerpo.id_producto, cuerpo.id_canal, cuerpo.precio_venta, cuerpo.fecha]
-    );
+            'VALUES (?, ?, ?, ?)'
+    ).run(cuerpo.id_producto, cuerpo.id_canal, cuerpo.precio_venta, cuerpo.fecha);
 
     const respuesta: Record<string, unknown> = {
         mensaje: 'Precio registrado',
-        id_precio: creado.insertId,
+        id_precio: result.lastInsertRowid,
         precio_venta: cuerpo.precio_venta,
         precio_venta_quintal: cuerpo.precio_venta
     };
@@ -124,31 +110,29 @@ router.post('/precios', protegerRuta, validar(crearPrecioSchema), async (req, re
     res.status(201).json(respuesta);
 });
 
-/** GET /precios/ultimo, el último precio de ese producto y canal. */
 router.get(
     '/precios/ultimo',
     protegerRuta,
     validar(queryUltimoPrecio, 'query'),
-    async (req, res) => {
+    (req, res) => {
         const q = (res.locals.query ?? {}) as {
             id_producto: number;
             id_canal?: number;
         };
 
         const cond: string[] = ['id_producto = ?'];
-        const params: unknown[] = [q.id_producto];
+        const params: (string | number)[] = [q.id_producto];
 
         if (q.id_canal !== undefined) {
             cond.push('id_canal = ?');
             params.push(q.id_canal);
         }
 
-        const [filas] = await pool.query<RowDataPacket[]>(
+        const filas = db.prepare(
             'SELECT id_precio, precio_venta, id_canal, fecha ' +
                 'FROM historial_precios WHERE ' + cond.join(' AND ') +
-                ' ORDER BY fecha DESC, id_precio DESC LIMIT 1',
-            params
-        );
+                ' ORDER BY fecha DESC, id_precio DESC LIMIT 1'
+        ).all(...params) as { id_precio: number; precio_venta: number; id_canal: number; fecha: string }[];
 
         if (filas.length === 0) {
             res.json({
@@ -169,24 +153,18 @@ router.get(
     }
 );
 
-/**
- * DELETE /precios/:id. Cualquier usuario puede borrar un precio porque el
- * historial es global y no lleva id_usuario. Para restringirlo habría que
- * agregar esa columna y filtrar acá.
- */
 router.delete(
     '/precios/:id',
     protegerRuta,
     validar(idParams, 'params'),
-    async (req, res) => {
+    (req, res) => {
         const { id } = req.params as unknown as { id: number };
 
-        const [resultado] = await pool.query<ResultSetHeader>(
-            'DELETE FROM historial_precios WHERE id_precio = ?',
-            [id]
-        );
+        const result = db.prepare(
+            'DELETE FROM historial_precios WHERE id_precio = ?'
+        ).run(id);
 
-        if (resultado.affectedRows === 0) {
+        if (result.changes === 0) {
             throw new ErrorHttp(404, 'Precio no encontrado');
         }
 

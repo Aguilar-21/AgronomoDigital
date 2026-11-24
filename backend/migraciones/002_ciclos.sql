@@ -1,4 +1,4 @@
--- 002_ciclos.sql
+﻿-- 002_ciclos.sql
 --
 -- POR QUE ESTA MIGRACION EXISTE
 --

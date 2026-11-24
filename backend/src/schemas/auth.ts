@@ -1,4 +1,4 @@
-// Forma del registro y del login.
+﻿// Forma del registro y del login.
 
 import { z } from 'zod';
 import {

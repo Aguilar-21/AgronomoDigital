@@ -1,4 +1,4 @@
-// Valido body, params y query con los esquemas de Zod.
+﻿// Valido body, params y query con los esquemas de Zod.
 
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { ZodTypeAny } from 'zod';

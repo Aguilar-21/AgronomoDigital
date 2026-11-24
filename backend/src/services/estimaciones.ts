@@ -1,12 +1,9 @@
-// Calculo y almacenamiento de las estimaciones de costo de insumos.
-
-import pool from '../db';
-import type { RowDataPacket, ResultSetHeader } from 'mysql2';
+﻿import db from '../db';
 import { ErrorHttp } from '../middleware/errores';
 import { aHectareas, type UnidadSuperficie } from '../config/constantes';
 import { num, redondear2, redondear4 } from './calculos';
 
-interface FilaReceta extends RowDataPacket {
+interface FilaReceta {
     id_insumo: number;
     insumo: string;
     unidad_base: string;
@@ -14,12 +11,12 @@ interface FilaReceta extends RowDataPacket {
     es_ejemplo: number;
 }
 
-interface FilaPrecio extends RowDataPacket {
+interface FilaPrecio {
     id_insumo: number;
-    precio_unitario: string;
+    precio_unitario: string | number;
 }
 
-interface FilaFuente extends RowDataPacket {
+interface FilaFuente {
     id_fuente: number;
     institucion: string;
     es_ejemplo: number;
@@ -62,13 +59,6 @@ interface DatosEstimacion {
     unidadSuperficie: UnidadSuperficie;
 }
 
-/**
- * Precio vigente de cada insumo en una fuente.
- *
- * Si hay varias filas vigentes para el mismo insumo gana la de vigente_desde
- * mas reciente. Se resuelve con el ORDER BY y el primer valor que aparece por
- * insumo, sin subconsultas.
- */
 async function preciosVigentes(
     idFuente: number,
     idsInsumos: number[]
@@ -77,15 +67,14 @@ async function preciosVigentes(
 
     const marcadores = idsInsumos.map(() => '?').join(', ');
 
-    const [filas] = await pool.query<FilaPrecio[]>(
+    const filas = db.prepare(
         'SELECT id_insumo, precio_unitario FROM precios_insumos ' +
             'WHERE id_fuente = ? ' +
-            'AND vigente_desde <= CURDATE() ' +
-            'AND (vigente_hasta IS NULL OR vigente_hasta >= CURDATE()) ' +
+            'AND vigente_desde <= date(\'now\') ' +
+            'AND (vigente_hasta IS NULL OR vigente_hasta >= date(\'now\')) ' +
             'AND id_insumo IN (' + marcadores + ') ' +
-            'ORDER BY id_insumo, vigente_desde DESC',
-        [idFuente, ...idsInsumos]
-    );
+            'ORDER BY id_insumo, vigente_desde DESC'
+    ).all(idFuente, ...idsInsumos) as FilaPrecio[];
 
     const precios = new Map<number, number>();
     for (const fila of filas) {
@@ -97,28 +86,25 @@ async function preciosVigentes(
     return precios;
 }
 
-/** Calcula la estimacion, la guarda con su detalle y la devuelve completa. */
 export async function crearEstimacion(
     datos: DatosEstimacion
 ): Promise<ResultadoEstimacion> {
-    const [fuentes] = await pool.query<FilaFuente[]>(
-        'SELECT id_fuente, institucion, es_ejemplo FROM fuentes_precio WHERE id_fuente = ?',
-        [datos.idFuente]
-    );
+    const fuentes = db.prepare(
+        'SELECT id_fuente, institucion, es_ejemplo FROM fuentes_precio WHERE id_fuente = ?'
+    ).all(datos.idFuente) as FilaFuente[];
 
     if (fuentes.length === 0) {
         throw new ErrorHttp(404, 'La fuente de precios no existe');
     }
 
-    const [receta] = await pool.query<FilaReceta[]>(
+    const receta = db.prepare(
         'SELECT r.id_insumo, i.nombre AS insumo, i.unidad_base, ' +
             'r.cantidad_por_hectarea, r.es_ejemplo ' +
             'FROM requerimientos_cultivo r ' +
             'JOIN insumos i ON i.id_insumo = r.id_insumo ' +
             'WHERE r.id_producto = ? AND i.activo = 1 ' +
-            'ORDER BY i.nombre',
-        [datos.idProducto]
-    );
+            'ORDER BY i.nombre'
+    ).all(datos.idProducto) as FilaReceta[];
 
     if (receta.length === 0) {
         throw new ErrorHttp(
@@ -165,29 +151,29 @@ export async function crearEstimacion(
         Number(fuentes[0].es_ejemplo) === 1 ||
         receta.some((fila) => Number(fila.es_ejemplo) === 1);
 
-    const conexion = await pool.getConnection();
+    let idEstimacion = 0;
+    let calculadoEn = new Date().toISOString();
 
+    db.exec('BEGIN');
     try {
-        await conexion.beginTransaction();
-
-        const [cabecera] = await conexion.query<ResultSetHeader>(
+        const cabecera = db.prepare(
             'INSERT INTO estimaciones ' +
                 '(id_usuario, id_producto, id_parcela, id_fuente, superficie, ' +
                 ' unidad_superficie, superficie_ha, total_estimado, alcance) ' +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'solo_insumos')",
-            [
-                datos.idUsuario,
-                datos.idProducto,
-                datos.idParcela,
-                datos.idFuente,
-                datos.superficie,
-                datos.unidadSuperficie,
-                superficieHa,
-                total
-            ]
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'solo_insumos')"
+        ).run(
+            datos.idUsuario,
+            datos.idProducto,
+            datos.idParcela,
+            datos.idFuente,
+            datos.superficie,
+            datos.unidadSuperficie,
+            superficieHa,
+            total
         );
 
-        const idEstimacion = cabecera.insertId;
+        idEstimacion = Number(cabecera.lastInsertRowid);
+
         const fila = '(?, ?, ?, ?, ?, ?)';
         const valores = detalle.flatMap((linea) => [
             idEstimacion,
@@ -198,62 +184,60 @@ export async function crearEstimacion(
             linea.subtotal
         ]);
 
-        await conexion.query(
+        db.prepare(
             'INSERT INTO estimaciones_detalle ' +
                 '(id_estimacion, id_insumo, unidad_base, cantidad, precio_unitario, subtotal) ' +
-                'VALUES ' + detalle.map(() => fila).join(', '),
-            valores
-        );
+                'VALUES ' + detalle.map(() => fila).join(', ')
+        ).run(...valores);
 
-        const [fecha] = await conexion.query<RowDataPacket[]>(
-            'SELECT calculado_en FROM estimaciones WHERE id_estimacion = ?',
-            [idEstimacion]
-        );
+        const fecha = db.prepare(
+            'SELECT calculado_en FROM estimaciones WHERE id_estimacion = ?'
+        ).get(idEstimacion) as { calculado_en: string };
 
-        await conexion.commit();
+        db.exec('COMMIT');
 
-        const advertencia =
-            'El total cubre solo insumos. No incluye mano de obra, maquinaria ni otros gastos.';
-
-        return {
-            id_estimacion: idEstimacion,
-            id_producto: datos.idProducto,
-            id_parcela: datos.idParcela,
-            id_fuente: datos.idFuente,
-            fuente: String(fuentes[0].institucion),
-            superficie: datos.superficie,
-            unidad_superficie: datos.unidadSuperficie,
-            superficie_ha: superficieHa,
-            total_estimado: total,
-            moneda: 'USD',
-            alcance: 'solo_insumos',
-            advertencia: datosEjemplo
-                ? advertencia + ' Los precios y las dosis usados son de ejemplo, no oficiales.'
-                : advertencia,
-            datos_ejemplo: datosEjemplo,
-            calculado_en: new Date(fecha[0].calculado_en as string | Date).toISOString(),
-            detalle
-        };
+        if (fecha?.calculado_en) {
+            calculadoEn = new Date(fecha.calculado_en).toISOString();
+        }
     } catch (error) {
-        await conexion.rollback();
+        db.exec('ROLLBACK');
         throw error;
-    } finally {
-        conexion.release();
     }
+
+    const advertencia =
+        'El total cubre solo insumos. No incluye mano de obra, maquinaria ni otros gastos.';
+
+    return {
+        id_estimacion: idEstimacion,
+        id_producto: datos.idProducto,
+        id_parcela: datos.idParcela,
+        id_fuente: datos.idFuente,
+        fuente: String(fuentes[0].institucion),
+        superficie: datos.superficie,
+        unidad_superficie: datos.unidadSuperficie,
+        superficie_ha: superficieHa,
+        total_estimado: total,
+        moneda: 'USD',
+        alcance: 'solo_insumos',
+        advertencia: datosEjemplo
+            ? advertencia + ' Los precios y las dosis usados son de ejemplo, no oficiales.'
+            : advertencia,
+        datos_ejemplo: datosEjemplo,
+        calculado_en: calculadoEn,
+        detalle
+    };
 }
 
-/** Historial de estimaciones del usuario, de la mas reciente a la mas vieja. */
 export async function listarEstimaciones(
     idUsuario: number,
     limit: number,
     offset: number
-): Promise<{ estimaciones: RowDataPacket[]; total: number }> {
-    const [conteo] = await pool.query<RowDataPacket[]>(
-        'SELECT COUNT(*) AS total FROM estimaciones WHERE id_usuario = ?',
-        [idUsuario]
-    );
+): Promise<{ estimaciones: any[]; total: number }> {
+    const conteo = db.prepare(
+        'SELECT COUNT(*) AS total FROM estimaciones WHERE id_usuario = ?'
+    ).get(idUsuario) as { total: number };
 
-    const [filas] = await pool.query<RowDataPacket[]>(
+    const filas = db.prepare(
         'SELECT e.id_estimacion, e.id_producto, pr.nombre AS producto, ' +
             'e.id_parcela, e.superficie, e.unidad_superficie, e.superficie_ha, ' +
             'e.total_estimado, e.id_fuente, f.institucion AS fuente, ' +
@@ -263,19 +247,17 @@ export async function listarEstimaciones(
             'JOIN fuentes_precio f ON f.id_fuente = e.id_fuente ' +
             'WHERE e.id_usuario = ? ' +
             'ORDER BY e.calculado_en DESC, e.id_estimacion DESC ' +
-            'LIMIT ? OFFSET ?',
-        [idUsuario, limit, offset]
-    );
+            'LIMIT ? OFFSET ?'
+    ).all(idUsuario, limit, offset);
 
-    return { estimaciones: filas, total: Number(conteo[0]?.total ?? 0) };
+    return { estimaciones: filas, total: Number(conteo?.total ?? 0) };
 }
 
-/** Una estimacion con su desglose, solo si es del usuario. */
 export async function obtenerEstimacion(
     idEstimacion: number,
     idUsuario: number
-): Promise<{ estimacion: RowDataPacket; detalle: RowDataPacket[] } | null> {
-    const [filas] = await pool.query<RowDataPacket[]>(
+): Promise<{ estimacion: any; detalle: any[] } | null> {
+    const filas = db.prepare(
         'SELECT e.id_estimacion, e.id_producto, pr.nombre AS producto, ' +
             'e.id_parcela, e.superficie, e.unidad_superficie, e.superficie_ha, ' +
             'e.total_estimado, e.id_fuente, f.institucion AS fuente, ' +
@@ -283,20 +265,18 @@ export async function obtenerEstimacion(
             'FROM estimaciones e ' +
             'JOIN productos pr ON pr.id_producto = e.id_producto ' +
             'JOIN fuentes_precio f ON f.id_fuente = e.id_fuente ' +
-            'WHERE e.id_estimacion = ? AND e.id_usuario = ?',
-        [idEstimacion, idUsuario]
-    );
+            'WHERE e.id_estimacion = ? AND e.id_usuario = ?'
+    ).all(idEstimacion, idUsuario) as any[];
 
     if (filas.length === 0) return null;
 
-    const [detalle] = await pool.query<RowDataPacket[]>(
+    const detalle = db.prepare(
         'SELECT d.id_insumo, i.nombre AS insumo, d.unidad_base, d.cantidad, ' +
             'd.precio_unitario, d.subtotal ' +
             'FROM estimaciones_detalle d ' +
             'JOIN insumos i ON i.id_insumo = d.id_insumo ' +
-            'WHERE d.id_estimacion = ? ORDER BY i.nombre',
-        [idEstimacion]
-    );
+            'WHERE d.id_estimacion = ? ORDER BY i.nombre'
+    ).all(idEstimacion);
 
     return { estimacion: filas[0], detalle };
 }

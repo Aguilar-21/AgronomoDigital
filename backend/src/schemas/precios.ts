@@ -1,4 +1,4 @@
-// Alta de precios de venta.
+﻿// Alta de precios de venta.
 
 import { z } from 'zod';
 import { fechaISO, idCanalOpcional, idProductoOpcional, montoPositivo } from './comunes';

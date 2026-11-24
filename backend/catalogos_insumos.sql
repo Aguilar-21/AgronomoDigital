@@ -1,4 +1,4 @@
--- catalogos_insumos.sql
+﻿-- catalogos_insumos.sql
 --
 -- Datos iniciales del catalogo de insumos, las recetas por cultivo y una
 -- fuente de precios de ejemplo.
@@ -12,7 +12,7 @@
 -- ---------------------------------------------------------------------------
 -- Categorias
 -- ---------------------------------------------------------------------------
-INSERT INTO `categorias_insumos` (`id_categoria_insumo`, `nombre`) VALUES
+INSERT OR REPLACE INTO `categorias_insumos` (`id_categoria_insumo`, `nombre`) VALUES
   (1, 'Semillas'),
   (2, 'Fertilizantes'),
   (3, 'Proteccion de cultivo'),
@@ -20,7 +20,7 @@ INSERT INTO `categorias_insumos` (`id_categoria_insumo`, `nombre`) VALUES
   (5, 'Mano de obra'),
   (6, 'Maquinaria'),
   (7, 'Otros')
-ON DUPLICATE KEY UPDATE `nombre` = VALUES(`nombre`);
+;
 
 -- ---------------------------------------------------------------------------
 -- Insumos
@@ -28,7 +28,7 @@ ON DUPLICATE KEY UPDATE `nombre` = VALUES(`nombre`);
 -- Riego, mano de obra y maquinaria quedan sin insumos por ahora: el documento
 -- de precios que se va a cargar trae insumos fisicos. Se agregan cuando exista
 -- una fuente para jornales y horas de maquina.
-INSERT INTO `insumos` (`id_insumo`, `id_categoria_insumo`, `nombre`, `unidad_base`, `activo`) VALUES
+INSERT OR REPLACE INTO `insumos` (`id_insumo`, `id_categoria_insumo`, `nombre`, `unidad_base`, `activo`) VALUES
   (1, 1, 'Semilla de maiz', 'kg', 1),
   (2, 1, 'Semilla de frijol', 'kg', 1),
   (3, 1, 'Semilla de arroz', 'kg', 1),
@@ -48,16 +48,12 @@ INSERT INTO `insumos` (`id_insumo`, `id_categoria_insumo`, `nombre`, `unidad_bas
   (17, 3, '2,4-D', 'litro', 1),
   (18, 3, 'Mancozeb', 'kg', 1),
   (19, 3, 'Cipermetrina', 'litro', 1)
-ON DUPLICATE KEY UPDATE
-  `id_categoria_insumo` = VALUES(`id_categoria_insumo`),
-  `nombre` = VALUES(`nombre`),
-  `unidad_base` = VALUES(`unidad_base`),
-  `activo` = VALUES(`activo`);
+;
 
 -- ---------------------------------------------------------------------------
 -- Alias para la ingesta del documento
 -- ---------------------------------------------------------------------------
-INSERT INTO `alias_insumos` (`id_alias`, `id_insumo`, `alias`) VALUES
+INSERT OR REPLACE INTO `alias_insumos` (`id_alias`, `id_insumo`, `alias`) VALUES
   (1, 11, 'UREA 46%'),
   (2, 11, 'Urea'),
   (3, 11, 'Fertilizante urea'),
@@ -68,28 +64,23 @@ INSERT INTO `alias_insumos` (`id_alias`, `id_insumo`, `alias`) VALUES
   (8, 19, 'Cipermetrina 20%'),
   (9, 1, 'Semilla maiz'),
   (10, 2, 'Semilla frijol')
-ON DUPLICATE KEY UPDATE `id_insumo` = VALUES(`id_insumo`);
+;
 
 -- ---------------------------------------------------------------------------
 -- Fuente de ejemplo
 -- ---------------------------------------------------------------------------
-INSERT INTO `fuentes_precio`
+INSERT OR REPLACE INTO `fuentes_precio`
   (`id_fuente`, `institucion`, `titulo`, `fecha_publicacion`, `url`,
    `hash_sha256`, `es_ejemplo`, `notas`)
 VALUES
   (1, 'Datos de ejemplo', 'Precios y dosis de ejemplo para pruebas', '2026-01-01', NULL,
    NULL, 1, 'Cifras inventadas solo para probar el calculo. Reemplazar por la fuente oficial.')
-ON DUPLICATE KEY UPDATE
-  `institucion` = VALUES(`institucion`),
-  `titulo` = VALUES(`titulo`),
-  `fecha_publicacion` = VALUES(`fecha_publicacion`),
-  `es_ejemplo` = VALUES(`es_ejemplo`),
-  `notas` = VALUES(`notas`);
+;
 
 -- ---------------------------------------------------------------------------
 -- Precios por unidad base
 -- ---------------------------------------------------------------------------
-INSERT INTO `precios_insumos`
+INSERT OR REPLACE INTO `precios_insumos`
   (`id_precio_insumo`, `id_insumo`, `precio_unitario`, `moneda`,
    `vigente_desde`, `vigente_hasta`, `id_fuente`)
 VALUES
@@ -112,17 +103,12 @@ VALUES
   (17, 17, 5.0000, 'USD', '2026-01-01', NULL, 1),
   (18, 18, 8.0000, 'USD', '2026-01-01', NULL, 1),
   (19, 19, 7.0000, 'USD', '2026-01-01', NULL, 1)
-ON DUPLICATE KEY UPDATE
-  `precio_unitario` = VALUES(`precio_unitario`),
-  `moneda` = VALUES(`moneda`),
-  `vigente_desde` = VALUES(`vigente_desde`),
-  `vigente_hasta` = VALUES(`vigente_hasta`),
-  `id_fuente` = VALUES(`id_fuente`);
+;
 
 -- ---------------------------------------------------------------------------
 -- Recetas por cultivo (dosis por hectarea, ilustrativas)
 -- ---------------------------------------------------------------------------
-INSERT INTO `requerimientos_cultivo`
+INSERT OR REPLACE INTO `requerimientos_cultivo`
   (`id_requerimiento`, `id_producto`, `id_insumo`, `cantidad_por_hectarea`, `etapa`, `es_ejemplo`)
 VALUES
   -- Maiz blanco
@@ -184,7 +170,4 @@ VALUES
   (46, 11, 11, 100.0000, 'general', 1),
   (47, 11, 12, 200.0000, 'general', 1),
   (48, 11, 15, 1000.0000, 'general', 1)
-ON DUPLICATE KEY UPDATE
-  `cantidad_por_hectarea` = VALUES(`cantidad_por_hectarea`),
-  `etapa` = VALUES(`etapa`),
-  `es_ejemplo` = VALUES(`es_ejemplo`);
+;

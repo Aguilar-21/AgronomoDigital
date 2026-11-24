@@ -1,4 +1,4 @@
-// POST /estimaciones y el historial de consultas del usuario.
+﻿// POST /estimaciones y el historial de consultas del usuario.
 
 import { Router } from 'express';
 import { validar } from '../middleware/validar';

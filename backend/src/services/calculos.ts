@@ -1,4 +1,4 @@
-// Conversion y redondeo de los DECIMAL que devuelve MySQL.
+﻿// Conversion y redondeo de los DECIMAL que devuelve MySQL.
 
 export function redondear2(n: number): number {
     if (!Number.isFinite(n)) return 0;

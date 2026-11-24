@@ -1,4 +1,4 @@
-// Aca se responden todos los errores. Las rutas solo lanzan ErrorHttp.
+﻿// Aca se responden todos los errores. Las rutas solo lanzan ErrorHttp.
 
 import type {
     ErrorRequestHandler,
@@ -41,7 +41,7 @@ const CODIGO_DUPLICADO = 'ER_DUP_ENTRY';
 
 /**
  * Traduce los errores de MySQL y de Zod a ErrorHttp. Un duplicado es 409,
- * un id que no existe es 404 y lo demás se deja como 500.
+ * un id que no existe es 404 y lo demÃ¡s se deja como 500.
  */
 export function erroresConocidos(error: unknown): ErrorHttp {
     if (error instanceof ErrorHttp) return error;

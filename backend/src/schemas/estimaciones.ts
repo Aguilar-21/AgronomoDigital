@@ -1,4 +1,4 @@
-// Validacion de POST /estimaciones y de los filtros del historial.
+﻿// Validacion de POST /estimaciones y de los filtros del historial.
 
 import { z } from 'zod';
 import { paginacion, superficie, unidadSuperficie } from './comunes';

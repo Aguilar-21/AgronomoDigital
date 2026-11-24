@@ -1,4 +1,4 @@
--- 001_renombres.sql
+﻿-- 001_renombres.sql
 --
 -- POR QUE ESTA MIGRACION EXISTE
 --

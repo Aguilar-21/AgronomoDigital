@@ -1,4 +1,4 @@
-// Alta, filtros y cambio de estado de publicaciones.
+﻿// Alta, filtros y cambio de estado de publicaciones.
 
 import { z } from 'zod';
 import { fechaISO, idCanalOpcional, idProductoOpcional, montoPositivo, texto } from './comunes';
@@ -9,7 +9,7 @@ export type Estado = (typeof ESTADOS)[number];
 
 /**
  * Transiciones permitidas. Vendido y retirado son finales: una venta cerrada
- * no se reabre, se retira la publicación vieja y se crea otra.
+ * no se reabre, se retira la publicaciÃ³n vieja y se crea otra.
  */
 export const TRANSICIONES: Record<Estado, readonly Estado[]> = {
     disponible: ['vendido', 'retirado'],

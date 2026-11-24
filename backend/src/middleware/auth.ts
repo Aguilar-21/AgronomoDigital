@@ -1,4 +1,4 @@
-// Reviso el Bearer y dejo el usuario en res.locals.
+﻿// Reviso el Bearer y dejo el usuario en res.locals.
 
 import jwt from 'jsonwebtoken';
 import type { RequestHandler } from 'express';

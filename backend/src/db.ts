@@ -1,66 +1,35 @@
-// El pool de MySQL. Las variables ya se validaron en config/env.ts.
+﻿// db.ts
+//
+// Conexion a SQLite. Un solo archivo, sin servidor.
+//
+// better-sqlite3 es sincrono: las consultas bloquean el hilo mientras
+// corren, pero para una app como esta (consultas cortas, pocos usuarios)
+// es mas simple y mas rapido que un driver asincrono.
 
-import mysql from 'mysql2/promise'; // mysql2 en su version con promesas
+import Database from 'better-sqlite3';
 import { env } from './config/env';
 import { logger } from './logger';
+import path from 'node:path';
+import fs from 'node:fs';
 
-/*
- * connectionLimit: 10 conexiones simultaneas como maximo. Es un numero
- * moderado para MySQL local; si el servidor llegara a tener mas, MySQL mismo
- * avisa con "Too many connections" y ahi conviene bajarlo.
- *
- * waitForConnections: en vez de rechazar la peticion cuando se acabo el cupo,
- * se espera a que se libere una conexion. Para una app como esta, donde las
- * consultas son cortas, casi siempre conviene esperar.
- *
- * queueLimit: 0 = cola infinita de espera. Por eso el combo con lo de arriba
- * no tira peticiones.
- *
- * enableKeepAlive: MySQL cierra conexiones inactivas por su cuenta (wait_timeout,
- * 8 horas por defecto, pero algunos servidores lo bajan a minutos). Con
- * keep-alive, mysql2 manda un ping periodico y las conexiones del pool no
- * mueren mientras la app esta esperando. Sin eso, la primera peticion despues
- * de un rato largo de inactividad falla con "connection lost" y el usuario ve
- * un 500 sin motivo aparente.
- *
- * Los DECIMAL de MySQL llegan como string para no perder precision (ver README,
- * seccion "Decimales"). Eso no se cambia aca: es mysql2 y no un error. Lo que si
- * se hace es convertir con num() de services/calculos en el punto de uso.
- */
-const pool = mysql.createPool({
-    host: env.DB_HOST,
-    user: env.DB_USER,
-    password: env.DB_PASSWORD,
-    database: env.DB_DATABASE,
-    port: 3306,
+const dbPath = env.DB_PATH;
+const dir = path.dirname(dbPath);
+if (dir && dir !== '.' && !fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+}
 
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
+const db: any = new Database(dbPath, { verbose: undefined });
 
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10_000,
-
-    // Con charset explicito se evita el "Unknown initial character set" que
-    charset: 'utf8mb4'
-});
-
-// namedPlaceholders:false queda como default a proposito. Los "?" se pasan com...
+// WAL mejora la concurrencia de lectura mientras se escribe.
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 /**
  * Comprueba que la base responde.
- *
- * Lo usa GET /health. SELECT 1 es la consulta mas barata posible: no toca
- * ninguna tabla, asi que responde en milisegundos y no se traba si alguna tabla
- * esta bloqueada.
- *
- * Devuelve true/false y no lanza, porque un /health que revienta con un 500
- * cuando la base caigo es un /health inutil para un monitor: el monitor solo
- * sabe interpretar 200 y todo lo demas.
  */
 export async function baseViva(): Promise<boolean> {
     try {
-        await pool.query('SELECT 1');
+        db.prepare('SELECT 1').get();
         return true;
     } catch (error) {
         logger.error({ err: error }, 'no se pudo consultar la base de datos');
@@ -68,4 +37,4 @@ export async function baseViva(): Promise<boolean> {
     }
 }
 
-export default pool;
+export default db;

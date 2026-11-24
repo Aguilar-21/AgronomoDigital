@@ -1,4 +1,4 @@
-// Armo la app Express aca. server.ts es el que la monta en un puerto.
+﻿// Armo la app Express aca. server.ts es el que la monta en un puerto.
 
 import express from 'express';
 import type { Application, RequestHandler } from 'express';
@@ -43,7 +43,7 @@ export function crearApp(): Application {
     // 50kb alcanzan para cualquier POST de esta app.
     app.use(express.json({ limit: '50kb' }));
 
-    // CORS. Con CORS_ORIGENES vacío se acepta cualquier origen (para trabajar
+    // CORS. Con CORS_ORIGENES vacÃ­o se acepta cualquier origen (para trabajar
     app.use(
         cors({
             origin: origenesCORS() ?? true,
@@ -57,8 +57,8 @@ export function crearApp(): Application {
     app.use(rutasCatalogos); // /productos, /canales, /canales/:id/productos
 
     /**
-     * GET /health, público: un monitor no tiene token. Devuelve 503 si la base
-     * no responde, que es lo que un monitor entiende como "caído".
+     * GET /health, pÃºblico: un monitor no tiene token. Devuelve 503 si la base
+     * no responde, que es lo que un monitor entiende como "caÃ­do".
      */
     app.get('/health', async (_req, res) => {
         const baseOk = await baseViva();
@@ -84,7 +84,7 @@ export function crearApp(): Application {
 
     /**
      * Rutas que no existen. Pasa por el manejador de errores para responder
-     * con el mismo JSON que todo lo demás.
+     * con el mismo JSON que todo lo demÃ¡s.
      */
     app.use(((req, _res, next) => {
         next(noEncontrado('No existe la ruta ' + req.method + ' ' + req.path));

@@ -19,7 +19,6 @@ const usuarioA = "e2e" + sello;
 const usuarioB = "e2e" + sello + "b";
 
 const envTxt = fs.readFileSync(path.join(__dirname, "..", ".env"), "utf8");
-const pass = (envTxt.match(/^DB_PASSWORD=(.*)$/m) || [])[1].trim();
 
 let ok = 0, fallos = 0;
 const chequear = (nombre, cond, extra) => {
@@ -233,20 +232,25 @@ async function llamar(metodo, ruta, cuerpo, token) {
   chequear("La publicacion sobrevive con parcela null", !!filaHuerfana && filaHuerfana.id_parcela === null, filaHuerfana);
 
   console.log("\n-- Limpieza --");
-  const mysql = require("mysql2/promise");
-  const cx = await mysql.createConnection({ host: "localhost", user: "root", password: pass, database: "agronomodigital" });
-  const [r] = await cx.execute("DELETE FROM usuarios WHERE correo IN (?, ?)", [correoA, correoB]);
-  chequear("Usuarios de prueba borrados", r.affectedRows === 2, r);
+  const Database = require("better-sqlite3");
+  const dbPath = require("path").resolve(__dirname, "..", ".env");
+  // read DB_PATH from .env
+  const envTxt2 = fs.readFileSync(path.join(__dirname, "..", ".env"), "utf8");
+  const dbPathMatch = (envTxt2.match(/^DB_PATH=(.*)$/m) || [])[1].trim() || "./data/agronomodigital.db";
+  const resolvedPath = path.isAbsolute(dbPathMatch) ? dbPathMatch : path.resolve(__dirname, "..", dbPathMatch);
+  const cx = new Database(resolvedPath);
+  const r = cx.prepare("DELETE FROM usuarios WHERE correo IN (?, ?)").run(correoA, correoB);
+  chequear("Usuarios de prueba borrados", r.changes === 2, r);
 
-  const contar = async (tabla, columna = "id_usuario") => {
-    const [x] = await cx.query("SELECT COUNT(*) n FROM " + tabla + " WHERE " + columna + " IN (?, ?)", [idA, b.datos.id_usuario]);
-    return Number(x[0].n);
+  const contar = (tabla, columna = "id_usuario") => {
+    const x = cx.prepare("SELECT COUNT(*) n FROM " + tabla + " WHERE " + columna + " IN (?, ?)").get(idA, b.datos.id_usuario);
+    return Number(x.n);
   };
-  chequear("Sin parcelas de prueba", await contar("parcelas") === 0);
-  chequear("Sin estimaciones de prueba", await contar("estimaciones") === 0);
-  chequear("Sin publicaciones de prueba", await contar("publicaciones") === 0);
+  chequear("Sin parcelas de prueba", contar("parcelas") === 0);
+  chequear("Sin estimaciones de prueba", contar("estimaciones") === 0);
+  chequear("Sin publicaciones de prueba", contar("publicaciones") === 0);
   chequear("Sin precios de prueba (global)", lista(trasP.datos).length === preciosAntes);
-  await cx.end();
+  cx.close();
 
   console.log("\n=== " + ok + " OK / " + fallos + " fallos ===");
   process.exit(fallos ? 1 : 0);

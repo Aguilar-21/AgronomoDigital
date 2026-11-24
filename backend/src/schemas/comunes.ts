@@ -1,4 +1,4 @@
-// Validaciones que se repiten en varios endpoints.
+﻿// Validaciones que se repiten en varios endpoints.
 
 import { z } from 'zod';
 import { UNIDADES_SUPERFICIE } from '../config/constantes';
@@ -75,8 +75,8 @@ export const texto = (min: number, max: number) =>
         .max(max, `No puede pasar de ${max} caracteres`);
 
 /**
- * Correo normalizado dentro del esquema (trim y minúsculas) para que nadie
- * pueda crear dos cuentas con la misma dirección escrita distinto.
+ * Correo normalizado dentro del esquema (trim y minÃºsculas) para que nadie
+ * pueda crear dos cuentas con la misma direcciÃ³n escrita distinto.
  */
 export const correo = z
     .string({ message: 'El correo es obligatorio' })
@@ -88,7 +88,7 @@ export const correo = z
 
 /**
  * Usuario normalizado igual que el correo. No se permite @ para que no se
- * pueda confundir con una dirección de correo en el login.
+ * pueda confundir con una direcciÃ³n de correo en el login.
  */
 export const usuario = z
     .string({ message: 'El usuario es obligatorio' })

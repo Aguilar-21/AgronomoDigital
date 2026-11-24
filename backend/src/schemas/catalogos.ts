@@ -1,4 +1,4 @@
-// Filtros de los catalogos de insumos.
+﻿// Filtros de los catalogos de insumos.
 
 import { z } from 'zod';
 

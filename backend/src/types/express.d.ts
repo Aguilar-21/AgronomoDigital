@@ -1,4 +1,4 @@
-// Para que TypeScript sepa que res.locals.usuario existe.
+﻿// Para que TypeScript sepa que res.locals.usuario existe.
 
 import type { UsuarioAutenticado } from '../auth/tipos';
 

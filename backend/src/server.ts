@@ -1,9 +1,9 @@
-// Arranco el servidor y cierro el pool cuando me piden que salga.
+﻿// Arranco el servidor y cierro el pool cuando me piden que salga.
 
 import { crearApp } from './app';
 import { env } from './config/env';
 import { logger } from './logger';
-import pool from './db';
+import db from './db';
 
 const app = crearApp();
 
@@ -16,16 +16,16 @@ const servidor = app.listen(env.PUERTO, () => {
 
 // Apagado limpio
 
-/** Cierra el servidor y después el pool de MySQL. */
+/** Cierra el servidor y despuÃ©s el pool de MySQL. */
 function apagar(motivo: string, codigoSalida = 0): void {
     logger.info({ motivo }, 'cerrando el servidor');
 
-    servidor.close(async () => {
+    servidor.close(() => {
         try {
-            await pool.end();
-            logger.info('pool de base de datos cerrado');
+            db.close();
+            logger.info('base de datos cerrada');
         } catch (error) {
-            logger.error({ err: error }, 'error al cerrar el pool de base de datos');
+            logger.error({ err: error }, 'error al cerrar la base de datos');
         } finally {
             process.exit(codigoSalida);
         }

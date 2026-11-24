@@ -1,4 +1,4 @@
--- 003_publicaciones.sql
+﻿-- 003_publicaciones.sql
 --
 -- POR QUE ESTA MIGRACION EXISTE
 --

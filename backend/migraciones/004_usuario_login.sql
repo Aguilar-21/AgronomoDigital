@@ -1,4 +1,4 @@
--- 004_usuario_login.sql
+﻿-- 004_usuario_login.sql
 --
 -- POR QUE ESTA MIGRACION EXISTE
 --

@@ -1,29 +1,24 @@
-// Leo el .env y lo valido al arrancar. Si falta algo, el servidor no arranca.
+﻿// Leo el .env y lo valido al arrancar. Si falta algo, el servidor no arranca.
 
-import 'dotenv/config'; // tiene que ir primero: lee el .env antes de validar
+import 'dotenv/config';
 import { z } from 'zod';
 
-// Coerce para que el puerto pueda llegar como texto desde el .env.
 const esquemaEnv = z.object({
-    DB_HOST: z.string().min(1, 'no puede estar vacio'),
-    DB_USER: z.string().min(1, 'no puede estar vacio'),
-    DB_PASSWORD: z.string(),
-    DB_DATABASE: z.string().min(1, 'no puede estar vacio'),
+    DB_PATH: z.string().min(1, 'no puede estar vacio').default('./data/agronomodigital.db'),
 
-    // min(16) es el requisito real de HMAC-SHA256 con una clave legible. Con
     JWT_SECRETO: z.string().min(16, 'debe tener al menos 16 caracteres'),
 
     PUERTO: z.coerce.number().int().min(1).max(65535).default(3002),
 
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
-    // Cuanto se guarda en pantalla el log de cada peticion. En produccion
     LOG_LEVEL: z
         .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
         .default('info'),
 
-    // Origenes que pueden llamar a la API. Vacio significa "cualquiera", que es
-    CORS_ORIGENES: z.string().default('')
+    CORS_ORIGENES: z.string().default(''),
+
+    HECTAREAS_POR_MANZANA: z.coerce.number().positive().default(0.6989)
 });
 
 export type Env = z.infer<typeof esquemaEnv>;
@@ -35,7 +30,6 @@ function cargar(): Env {
         return resultado.data;
     }
 
-    // Se imprime el problema en formato legible y se sale. No se lanza una
     const problemas = resultado.error.issues
         .map((i) => `  - ${i.path.join('.') || '(raiz)'}: ${i.message}`)
         .join('\n');
@@ -45,7 +39,7 @@ function cargar(): Env {
     console.error(problemas);
     console.error('\n  Como arreglarlo:');
     console.error('    1. Copia backend/.env.example a backend/.env');
-    console.error('    2. Completa los valores con los datos reales de tu MySQL');
+    console.error('    2. Completa DB_PATH con la ruta al archivo .db');
     console.error('    3. JWT_SECRETO necesita minimo 16 caracteres. No va en el codigo.');
     console.error('\n  El archivo .env NUNCA se sube al repositorio.');
     console.error('='.repeat(64) + '\n');
@@ -55,13 +49,6 @@ function cargar(): Env {
 
 export const env: Env = cargar();
 
-/**
- * Lista de origenes permitidos, ya separada y sin entradas vacias.
- *
- * Si CORS_ORIGENES esta vacio devuelve null, que es la senal de "deja pasar
- * cualquiera". Se decide en un solo lugar para que app.ts no tenga que
- * interpretar strings.
- */
 export function origenesCORS(): string[] | null {
     const crudo = env.CORS_ORIGENES.trim();
     if (crudo === '') return null;
